@@ -1,0 +1,21 @@
+{
+  "upload_type": "software",
+  "title": "OpenKeito",
+  "creators": [
+    {
+      "name": "Nakamura, Yuta",
+      "orcid": "0000-0003-4570-5437"
+    }
+  ],
+  "license": "mit",
+  "description": "OpenKeito (Keito, 系統 = \"power system\" in Japanese): a free electromagnetic transient (EMT) simulator for power systems, for people and AI agents. Models are JSON documents; networks of pandapower and PowSyBl (CIM / CGMES) convert into models that start from their power flow; the solver is verified against closed-form solutions; it runs as a command, a Python package, an MCP server and a WebAssembly browser page. Dual-licensed under Apache-2.0 or MIT.",
+  "keywords": [
+    "power systems",
+    "electromagnetic transients",
+    "EMT",
+    "simulation",
+    "CIM",
+    "CGMES",
+    "AI agents"
+  ]
+}
