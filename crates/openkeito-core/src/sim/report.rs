@@ -41,6 +41,9 @@ pub struct Timing {
     /// Right-hand sides, solutions, controls and switching logic: the rest
     /// of the time loop.
     pub solve_s: f64,
+    /// Evaluating control blocks when detail timing is enabled.
+    #[serde(skip)]
+    pub control_s: f64,
     /// Handing rows to the output sink (formatting and writing the CSV).
     pub output_s: f64,
     pub total_s: f64,

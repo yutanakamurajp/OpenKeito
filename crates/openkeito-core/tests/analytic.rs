@@ -430,3 +430,62 @@ fn a_failed_run_keeps_its_events() {
     assert_eq!(stats.events[0].component, "S1");
     assert_eq!(stats.steps, 5);
 }
+
+/// Numerical oscillation after interrupting an inductive current with a parallel
+/// resistor (`R = 1`, `Rs = 1000`, `L = 1e-3`, `h = 1e-4`): the fast mode
+/// `x = h (R + Rs) / L = 100.1` persists under the trapezoidal rule with factor
+/// `(1 - x/2) / (1 + x/2) ≈ -0.9608` per step, whereas 2S-DIRK damps it by
+/// `R(-x) ≈ -0.044` per step (`paper/figures/numerical_oscillation.py`, Claim 2).
+#[test]
+fn interrupting_an_inductive_current_matches_theoretical_oscillation_factors() {
+    let (e, r, rs, l, h, t_open, end) = (10.0, 1.0, 1e3, 1e-3, 1e-4, 1e-3, 3e-3);
+    let x = h * (r + rs) / l;
+    let trap_expected = (1.0 - 0.5 * x) / (1.0 + 0.5 * x);
+    let gamma = 1.0 - std::f64::consts::FRAC_1_SQRT_2;
+    let dirk_expected = (1.0 - (1.0 - 2.0 * gamma) * x) / (1.0 + gamma * x).powi(2);
+
+    assert!((trap_expected - (-0.9608)).abs() < 1e-4);
+    assert!((dirk_expected - (-0.0440)).abs() < 1e-4);
+
+    let components = json!([
+        {"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {"type": "dc", "value": e}},
+        {"type": "switch", "name": "S1", "nodes": ["n1", "n2"], "close_time_s": 0.0, "open_time_s": t_open,
+         "open_at_current_zero": false},
+        {"type": "resistor", "name": "Rs", "nodes": ["n1", "n2"], "resistance_ohm": rs},
+        {"type": "resistor", "name": "R1", "nodes": ["n2", "n3"], "resistance_ohm": r},
+        {"type": "inductor", "name": "L1", "nodes": ["n3", "gnd"], "inductance_h": l,
+         "initial_current_a": e / r},
+    ]);
+    let outputs = json!([
+        {"type": "node_voltage", "node": "n3"},
+        {"type": "branch_current", "component": "L1"},
+    ]);
+    let k0 = (t_open / h).round() as usize;
+
+    let trap = run(&model(
+        "trapezoidal",
+        h,
+        end,
+        components.clone(),
+        outputs.clone(),
+    ));
+    for offset in 2..=6 {
+        let ratio = trap.rows[k0 + offset][0] / trap.rows[k0 + offset - 1][0];
+        assert!(
+            (ratio - trap_expected).abs() < 1e-5,
+            "trapezoidal step +{offset}: ratio {ratio} vs {trap_expected}"
+        );
+    }
+    let trap_factor = trap.rows[k0 + 6][0] / trap.rows[k0 + 5][0];
+    assert!((trap_factor - (-0.9608)).abs() < 1e-4);
+    assert!(trap.rows[k0 + 10][0].abs() > 1.0);
+
+    let dirk = run(&model("2s-dirk", h, end, components, outputs));
+    let dirk_factor = dirk.rows[k0 + 3][0] / dirk.rows[k0 + 2][0];
+    assert!(
+        (dirk_factor - dirk_expected).abs() < 1e-5,
+        "2s-dirk factor {dirk_factor} vs {dirk_expected}"
+    );
+    assert!((dirk_factor - (-0.044)).abs() < 1e-3);
+    assert!(dirk.rows[k0 + 5][0].abs() < 0.05);
+}

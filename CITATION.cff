@@ -14,7 +14,7 @@ abstract: >-
   that starts from their power flow, schedules, and an MCP server.
 authors:
   - name: "The OpenKeito contributors"
-version: "0.12.0"
+version: "0.13.0"
 date-released: "2026-11-25"
 license:
   - MIT

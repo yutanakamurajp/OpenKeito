@@ -19,6 +19,8 @@ pub use element::{Element, Node, OperatingPoint, SignalResponse, Stage, SwitchAc
 pub use linalg::{Complex64, DenseMatrix, Factors, Lu, Scalar, Solver, Stamp};
 pub use netlist::{component_nodes, ComponentNodes};
 pub use phasor::{FrequencyScanner, ScanColumn, ScanStats};
+#[doc(hidden)]
+pub use sim::last_detail_control_s;
 pub use sim::{
     Column, PhasorValue, RunStats, SimError, Simulator, Stages, SteadyStateReport, SwitchEvent,
     Timing, MAX_OPERATING_POINT_ITERATIONS,

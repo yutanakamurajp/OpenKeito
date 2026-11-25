@@ -63,6 +63,34 @@ and `warnings`, and the connections of every model that can be read
 names that are not, or an `out` that already holds a batch result (without `force=True`),
 raise `OpenKeitoError` before anything runs.
 
+### Controller callbacks
+
+`openkeito.run` accepts an optional Python callback `controller(t, state)` for closed-loop or
+learned controllers evaluated at `t = 0` and every `control_interval_steps` steps (default `1`),
+or every `control_period_s` seconds (which must be a positive integer multiple of
+`simulation.time_step_s`, within `1e-6` relative tolerance):
+
+```python
+def p_controller(t, state):
+    return {"u": 3.5 * (10.0 - state["v_c"])}
+
+result = openkeito.run(model, controller=p_controller, control_interval_steps=1)
+result = openkeito.run(model, controller=p_controller, control_period_s=1e-3)
+```
+
+- `state` maps every control signal name and every output column name (`V(...)`, `I(...)`,
+  `S(...)`, …) to its `float` value at time `t` after fresh measurements and upstream blocks
+  have been evaluated.
+- The callback returns a mapping `{signal_name: value}` (or `None` / `{}` to keep the
+  current held values). Between updates, overridden signals hold their latest value with a
+  zero-order hold; keys omitted in a subsequent update also keep their held values, and
+  downstream control blocks see the overridden signal in the same grid-point evaluation.
+- Misuse of `controller`, `control_period_s`, or `control_interval_steps` raises `ValueError`
+  before running. Exceptions raised by the callback, unknown signal names, or non-finite
+  values stop the simulation safely with diagnostic `E252` (`OpenKeitoError` when
+  `check=True`, or `status == "failed"` with partial rows up to the failure kept when
+  `check=False`).
+
 ## From a power flow (pandapower)
 
 ```python

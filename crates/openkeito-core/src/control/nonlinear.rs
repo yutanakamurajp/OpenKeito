@@ -120,18 +120,38 @@ impl Block for DeadBand {
     }
 }
 
-pub(super) struct Product(Vec<usize>);
-
-impl Product {
-    pub fn new(p: &model::Product, b: &Build) -> Self {
-        Product(b.signals(&p.inputs))
-    }
+pub(super) enum Product {
+    Inline { inputs: [usize; 4], len: u8 },
+    Many(Vec<usize>),
 }
 
 impl Product {
+    pub fn new(p: &model::Product, b: &Build) -> Self {
+        if p.inputs.len() <= 4 {
+            let mut inputs = [0; 4];
+            for (slot, n) in inputs.iter_mut().zip(&p.inputs) {
+                *slot = b.signal(n);
+            }
+            Product::Inline {
+                inputs,
+                len: p.inputs.len() as u8,
+            }
+        } else {
+            Product::Many(b.signals(&p.inputs))
+        }
+    }
+
+    #[inline]
+    fn inputs(&self) -> &[usize] {
+        match self {
+            Product::Inline { inputs, len } => &inputs[..*len as usize],
+            Product::Many(v) => v,
+        }
+    }
+
     /// The outputs for the inputs in `signals`.
     fn write(&self, signals: &[f64], out: &mut [f64]) {
-        out[0] = self.0.iter().map(|&k| signals[k]).product();
+        out[0] = self.inputs().iter().map(|&k| signals[k]).product();
     }
 }
 

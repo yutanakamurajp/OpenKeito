@@ -6,7 +6,9 @@
 - 比べる相手は、解析解、手計算、公開された文献の式、別に積分した同じ方程式に限る。ほかのシミュレータとの比較は入れていない。
 - 下の数字は、2026-11-22 に `python paper/make.py` が出した値である (OpenKeito 0.6.0、モデル形式 0.5、Windows 11、
   Python 3.11、numpy 2.4.6、pandapower 3.5.6、pypowsybl 1.16.1、matplotlib 3.11.2)。M9 Stage 4 で追加した
-  `controls_v07`・`wecc_ibr` の数字は 2026-11-24 に OpenKeito 0.11.0、モデル形式 0.7、Python 3.12 で出した値である。計算時間だけは
+  `controls_v07`・`wecc_ibr` の数字は 2026-11-24 に OpenKeito 0.11.0、モデル形式 0.7、Python 3.12 で出した値、M10 段 2 で追加した
+  `expression_control`・`ieee39_diagram` の数字は 2026-11-25 に OpenKeito 0.11.0、モデル形式 0.8、Python 3.12 で出した値、M10 段 4 で追加した
+  `ai_control` の数字は 2026-11-25 に OpenKeito 0.13.0、モデル形式 0.8、Python 3.11 で出した値である。計算時間だけは
   `docs/performance.md` に記録済みの値で、このスクリプトは測り直していない。
 
 ## 使い方
@@ -23,7 +25,7 @@ python paper/make.py --measure                # 計算時間をこの機械で�
 
 - 項目ごとに、数値の CSV (図の元データ)、図 (PDF と PNG)、表 (`.tex` と `.md`) を書く。項目の主な数字は
   `numbers.json` にまとまる。
-- 乱数も時刻も使わない。同じ入力からは同じファイルが出る (全部を 2 回作り、67 ファイルがバイト単位で同じことを確かめた。
+- 乱数も時刻も使わない。同じ入力からは同じファイルが出る (全部を 2 回作り、80 ファイルがバイト単位で同じことを確かめた。
   PDF と PNG も日付を書かないので同じになる)。潮流の反復の結果は pandapower・pypowsybl の版で最後の桁が変わりうる。
 - 計算時間は機械に依存するので、ほかと分けてある。既定では `paper/data/*_recorded.csv` (`docs/performance.md` の表を
   写したもの) から図を作る。`--measure` を付けたときだけこの機械で測り、`*_measured.csv` に書く。測るときは 1 つの
@@ -51,9 +53,12 @@ python paper/make.py --measure                # 計算時間をこの機械で�
 | `machine_short_circuit` | 図 1 枚 (2 面) | Park の式を古典的ルンゲ・クッタ法 (5 µs) で別に積分した解 | 相電流 (最大 6.29 pu) の誤差: 2S-DIRK 2.05e-4 pu (100 µs)・5.64e-5 pu (50 µs)、台形則 9.29e-4・2.30e-4 pu。段あたりの反復 0.95 回、最大 4 回 |
 | `converter_response` | 図 1 枚 (2 面) | 1 次遅れ (τ = 1 ms)、電流の上限 1.1 pu | 電流指令のステップ 0.302 pu に対して、1 次遅れとの差は 1.55e-2 pu (50 µs)・7.97e-3 pu (25 µs)。比 1.94 で刻みに 1 次 (制御と回路の間の 1 刻み遅れ)。故障中の電流指令の大きさは 1.1 pu に張り付き、実際の電流は故障の終わりで 1.9e-3 pu 以内。故障の始まりと終わりに最大 1.155 pu |
 | `controls_v07` | 図 1 枚 (4 面)、表 1 つ | 折れ線補間 (`np.interp`)、動的上下限下の解析解 (1 次遅れ・PI・積分器)、明示ブロック構成 (`gain` + 制限付き `integrator` + `sum` + `limiter`)、零状態開始 | 形式 `"0.7"` の検証: `piecewise_linear` と動的 `limiter` の誤差 1.11e-16。動的信号上下限での刻み幅収束次数 (400 → 50 µs) は `lag` 2.000、`pi` 1.999–2.000、`integrator` 1.999–2.000。`pi` の `anti_windup="state"` はブロック分解と最大差 6.66e-16 で一致 (解除直後 `state` 0.49 対 `conditional` −0.503)。`"initialization": "exclude"` の分岐電流は t = 0 で 7.85e-16 A (`include` は 2.8903 A)、他ノードのフェーザ誤差 7.11e-15 V |
+| `expression_control` | 図 1 枚 (4 面) | 閉じた解析式 (`np.sin`・`np.hypot`・`np.arctan2`)、明示ブロック分解 (`product`・`gain`・`sum`・`function`)、閉ループ ODE 厳密解 `1/(1+t)`、`interpolated` スイッチング時刻 | 形式 `"0.8"` の `expression` 制御ブロック検証: 1 入力 (`2*x^2 + sin(x)`)・複数入力 (`hypot`, `atan2`)・`variables` (`dq.d`, `dq.q`)・定数 `pi, e`・右結合 `^` の最大誤差 0.0 (< 1e-14)。閉ループ `dx/dt = -x^2` の収束次数 2.000 (400 → 50 µs、最小誤差 1.85e-10)。`interpolated` スイッチング `preview` で PWM はブロック分解と差 0.0 (52 箇所)、非線形 `u^2` 交差時刻誤差 8.03e-17 s (電流最大誤差 0.0457 A 対 `grid` 0.467 A) |
+| `ai_control` | 図 1 枚 (2 面) | 組み込み `sum` + `pi` 制御ブロック、周期別ゼロ次ホールド更新 (`control_interval_steps`) | Python コールバック制御口: RLC PI 閉ループ (20 µs 毎刻み) で組み込みブロックと最大差 2.84e-14 V (`V(n3)`)・4.09e-14 V (`u`)。周期 ZOH (1・10・25 刻み) の呼出回数 1001・101・41 回、20 ms 終値 9.2126・9.2157・10.7329 V |
 | `wecc_ibr` | 図 1 枚 (2 面) | 定常開始、動的電流上限 (`vdl1_iq_max`・`lvpl_max`・`ip_lim`) | `examples/wecc_ibr.json` (10 MVA、6.6 kV): 故障前 (t < 0.2 s) の端子電圧変動 4.8e-5 pu 以内、有効電力変動 3.82e-5 pu 以内。故障中 (0.2–0.3 s) は端子電圧が平均 0.5743 pu (最小 0.0616 pu) に低下し、無効電流 `iq_gen` が最大 0.5398 pu まで増加、有効電流 `ip_gen` は動的上限下で最小 0.4532 pu まで抑制。除去後は `vt_pu` 0.9955 pu、`p_pu` 0.8126 pu に復帰 |
 | `power_flow_start` | 図 1 枚、表 1 つ | pandapower・PowSyBl (OpenLoadFlow) の潮流解 | 下の表 |
 | `schedule_runs` | 図 1 枚 (4 面) | 逐次実行、次の時刻の潮流解 | case9、AC OPF の 24 断面 × 故障: 1 スレッドと 4 スレッドの結果が 1 555 848 個の値すべてでビット単位に同じ。開始は潮流と 6.2e-11 pu。推移 2 区間: 開始 1e-11 pu 以内、終わりは次の時刻の潮流と 8.6e-6 pu・4.5e-4°・2.2e-3 MW |
+| `ieee39_diagram` | 図 1 枚 | — (`pandapower.networks.case39()` と `openkeito.pandapower.from_pandapower`・`openkeito.layout`) | IEEE 39 母線系統の単線結線図: 39 母線 (発電機・基準母線 30–39、母線 31 基準、母線 30 IBR、負荷 21 箇所、母線 2 3LG・母線 16 SLG 故障点)、線路 35 本・変圧器 11 台、OpenKeito 変換部品 77 個・`layout` レール 39 本 |
 | `performance` | 図 1 枚 (3 面) | — (記録済みの値) | 疎行列 LU の 1 刻み: 1.54 µs (未知数 51)、20.7 µs (483)、257 µs (4803)。伸びの指数 1.13 (密行列は 1.93)。8 スレッドで分割なしの 2.6〜4.5 倍。wasm はネイティブの 1.25〜1.81 倍 |
 | `diagnostics` | 表 1 つ | — | 誤りを入れた 7 つのモデルの診断 12 件。全部にコード・場所・内容・hint がある。4 つの誤りを入れたモデルは 4 件 (E111・E130・E121・E150) をまとめて返す |
 
@@ -84,7 +89,7 @@ python paper/make.py --measure                # 計算時間をこの機械で�
 | # | 主張 | 図表 | テスト | 数字 | 文献の式 |
 |---|---|---|---|---|---|
 | 1 | 2 つの積分法 (2S-DIRK、台形則) は線形回路で 2 次の精度を持つ | `integration_order` | `analytic.rs` | 次数 2.00、誤差の比 2.06 | Alexander 1977、Noda・Takenaka・Inoue 2009、Dommel 1969 |
-| 2 | 2S-DIRK は、スイッチが切った速いモードを数刻みで減衰させる。台形則は、動作の直後を後退オイラーの半刻み 2 回に替えても、符号の反転が残る | `numerical_oscillation` | `test_paper_figures.py` (2 ms 以降; 係数の単体テストは未追加) | 1 刻みあたり −0.044 倍と −0.9608 倍 | Marti・Lin 1989、Noda ほか 2009 |
+| 2 | 2S-DIRK は、スイッチが切った速いモードを数刻みで減衰させる。台形則は、動作の直後を後退オイラーの半刻み 2 回に替えても、符号の反転が残る | `numerical_oscillation` | `analytic.rs` (`chopping_an_inductor_current_leaves_no_numerical_oscillation`、`interrupting_an_inductive_current_matches_theoretical_oscillation_factors`)、`test_paper_figures.py` (2 ms 以降および 1 刻みあたりの減衰比 −0.9608・−0.044) | 1 刻みあたり −0.044 倍と −0.9608 倍 | Marti・Lin 1989、Noda ほか 2009 |
 | 3 | 切り替え時刻で刻みを分けると、スイッチングをまたいでも 2 次の精度になる。格子点で切り替えると 1 次で、同じ精度に 10 倍以上細かい刻みが要る | `buck_switching`、`diode_bridge` | `switching.rs`、`power_electronics.rs` | 1.50e-6 A 対 0.207 A (1 µs)。10 µs の分割が格子点 1 µs の 1/1374 | Kuffel ほか 1997、Strunz 2004 (考え方)、Mohan ほか (回路)、Erickson・Maksimović (不連続導通) |
 | 4 | 三相の故障電流は、対称座標法の手計算と刻みの誤差の範囲で合う。台形則の誤差は故障抵抗が無いとき周波数のゆがみの式 (ωh)²/12 に一致し、あるときはそれ以下 | `fault_currents` | `three_phase.rs` | 3.3e-6 と 3.29e-6 (20 µs) | Fortescue 1918、Anderson 1973、Grainger・Stevenson 1994 |
 | 5 | フェーザ解から始めると、立ち上がりの過渡を計算しなくてよく、波形は定常から (ωh)² の桁しか動かない | `steady_state` | `steady_state.rs` | 2.6e-6 (20 µs)、初期化なしは 1.16 | — (手計算) |
@@ -94,9 +99,12 @@ python paper/make.py --measure                # 計算時間をこの機械で�
 | 9 | 潮流の結果 (pandapower、PowSyBl・CGMES) から作ったモデルは、潮流解をフェーザ解として持ち、そこから EMT が始まる | `power_flow_start` | `test_pandapower.py`、`test_powsybl.py`、`test_machines.py` | フェーザ解 1e-15〜4e-10 pu、波形 5e-5 pu 以内 | Thurner ほか 2018、Zimmerman ほか 2011、PowSyBl の文書、CGMES |
 | 10 | 最適化で決めた計画値の時間断面ごとに EMT を一括で実行でき、並列と逐次で結果がビット単位で同じ。隣の時刻への推移は、次の時刻の潮流解に整定する | `schedule_runs` | `test_pandapower.py`、`test_transition.py`、`partition.rs` | 1 555 848 個の値が一致。推移の終わり 8.6e-6 pu | — |
 | 11 | 1 刻みの時間は未知数にほぼ比例する (疎行列 LU)。線路で回路を分けるとスレッドで速くなる。同じコードが WebAssembly で動く | `performance` | `benchmark.rs` (手動)、`partition.rs`、`openkeito-wasm/tests/compare.mjs` | 指数 1.13、8 スレッドで 4.5 倍 (輪 1000 母線)、wasm 1.25〜1.81 倍 | Gilbert・Peierls 1988、Falcão ほか 1993、Marti・Linares 1994 |
-| 12 | 入力の誤りは、コード・場所・値・直し方を持つ診断として返る。モデルとして読めた後の検査は、見つけたものを全部まとめて返す | `diagnostics` | `diagnostics.rs`、`cli.rs`、`test_mcp.py` | 7 モデルで 12 件、全部に hint。部品 26 種と制御ブロック 31 種の全部に、パラメータと例がある | — |
+| 12 | 入力の誤りは、コード・場所・値・直し方を持つ診断として返る。モデルとして読めた後の検査は、見つけたものを全部まとめて返す | `diagnostics` | `diagnostics.rs`、`cli.rs`、`test_mcp.py` | 7 モデルで 12 件、全部に hint。部品 26 種と制御ブロック 32 種の全部に、パラメータと例がある | — |
 | 13 | モデル形式 `"0.7"` の折れ線補間、動的信号上下限 (1 次遅れ・PI・積分器・リミッタ)、状態型アンチワインドアップ (`anti_windup="state"`)、および分岐の定常初期化除外 (`"initialization": "exclude"`) は解析解・明示ブロック構成と 2 次精度または丸め誤差で一致する | `controls_v07`、`controls_v07_table` | `controls.rs`、`steady_state.rs`、`test_paper_figures.py` | 折れ線・リミッタ誤差 1.11e-16、収束次数 2.00、ブロック分解差 6.66e-16、除外分岐 `|I(0)|` 7.85e-16 A | IEEE Std 421.5 |
 | 14 | WECC 汎用再生可能エネルギー制御構成 (REPCA1 / REECA1 / REGCA1) の平均値 IBR モデルは定常状態から開始し、故障時の動的電流制限下で無効電流支援と有効電流抑制を行い、故障除去後に復帰する | `wecc_ibr` | `test_paper_figures.py` | 故障前電圧変動 4.8e-5 pu、故障中 `iq_gen` 最大 0.5398 pu、`ip_gen` 最小 0.4532 pu、復帰後 `vt_pu` 0.9955 pu | WECC REGC_A・REEC_A・REPC_A の公開仕様 |
+| 15 | モデル形式 `"0.8"` の `expression` 制御ブロック (1 入力・複数入力・`variables` マップによるドット付き信号・定数 `pi, e`・右結合 `^`) は解析式と明示ブロック分解に丸め誤差で一致し、積分器との閉ループで 2 次収束し、`interpolated` スイッチングの `preview` でも一致する | `expression_control` | `controls.rs`、`cli.rs`、`load.rs`、`test_paper_figures.py` | 最大誤差 0.0 (< 1e-14)、閉ループ収束次数 2.000、非線形交差時刻誤差 8.03e-17 s | — |
+| 16 | `pandapower.networks.case39()` の IEEE 39 母線系統を変換して、発電機母線 (30–39)・母線 30 の IBR・検証用故障点 (母線 2・16) を持つ単線結線図と母線座標・種別 CSV を決定的に生成できる | `ieee39_diagram` | `test_paper_figures.py`、`test_layout_sidecar.py` | 39 母線、線路 35 本、変圧器 11 台、変換部品 77 個 | Zimmerman ほか 2011 |
+| 17 | Python コールバック口 (`openkeito.run` の `controller`) は毎刻みで組み込み制御ブロック (`sum` + `pi`) と丸め誤差で一致し、周期指定時は呼出回数 `1 + steps // interval` のゼロ次ホールドで動作する | `ai_control` | `test_ai_control.py`、`test_paper_figures.py` | `V(n3)` 最大差 2.84e-14 V、`u` 最大差 4.09e-14 V、周期 ZOH 1001・101・41 回 | — |
 
 文献の書誌は `docs/numerical-method.md` の References にある (書誌は確認済み。章・節の番号は未確認)。
 

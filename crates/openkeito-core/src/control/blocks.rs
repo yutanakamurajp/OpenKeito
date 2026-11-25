@@ -43,25 +43,48 @@ impl Block for Gain {
 }
 
 /// Sum of sign * input.
-pub(super) struct Sum(Vec<(usize, f64)>);
+pub(super) enum Sum {
+    Inline { terms: [(usize, f64); 4], len: u8 },
+    Many(Vec<(usize, f64)>),
+}
 
 impl Sum {
     pub fn new(s: &model::Sum, b: &Build) -> Self {
-        Sum(s
-            .inputs
-            .iter()
-            .zip(&s.signs)
-            .map(|(n, sign)| (b.signal(n), *sign))
-            .collect())
+        if s.inputs.len() <= 4 {
+            let mut terms = [(0, 0.0); 4];
+            for (slot, (n, sign)) in terms.iter_mut().zip(s.inputs.iter().zip(&s.signs)) {
+                *slot = (b.signal(n), *sign);
+            }
+            Sum::Inline {
+                terms,
+                len: s.inputs.len() as u8,
+            }
+        } else {
+            Sum::Many(
+                s.inputs
+                    .iter()
+                    .zip(&s.signs)
+                    .map(|(n, sign)| (b.signal(n), *sign))
+                    .collect(),
+            )
+        }
+    }
+
+    #[inline]
+    fn terms(&self) -> &[(usize, f64)] {
+        match self {
+            Sum::Inline { terms, len } => &terms[..*len as usize],
+            Sum::Many(v) => v,
+        }
     }
 }
 
 impl Block for Sum {
     fn evaluate(&mut self, _ctx: &Context, signals: &[f64], out: &mut [f64]) {
-        out[0] = self.0.iter().map(|(k, s)| s * signals[*k]).sum();
+        out[0] = self.terms().iter().map(|(k, s)| s * signals[*k]).sum();
     }
     fn preview(&self, _t: f64, signals: &[f64], out: &mut [f64]) {
-        out[0] = self.0.iter().map(|(k, s)| s * signals[*k]).sum();
+        out[0] = self.terms().iter().map(|(k, s)| s * signals[*k]).sum();
     }
 }
 

@@ -816,7 +816,7 @@ errors, with W warnings.
 | W220, W221 | run | the waveforms left the steady state (W220); a switch still waits for a current zero at the end (W221) |
 | E230, E231, W230, W231 | validation | `bergeron_line`: travel time below the time step, resistance that couples the modes or exceeds the characteristic impedance |
 | E240–E244, W240 | validation | control blocks and controlled sources: names of signals, transfer functions, time series, lookup tables (`piecewise_linear`), `expression` blocks (E243: syntax errors, undefined variables or functions, wrong argument counts, variable conflicts), signals that a component offers (E244); a controlled source without `steady_state` (W240) |
-| E250, E251 | run | a loop of control blocks did not settle; a control signal is not finite |
+| E250–E252 | run | a loop of control blocks did not settle; a control signal is not finite; a controller callback failed or returned a non-finite value |
 | E260–E264, W260, W261 | validation, run | nonlinear characteristics and saturation |
 | W270, W271 | run | more switching instants within a step than are placed; default diode resistances that block more than one device does |
 | E280–E282, W280 | validation, run | synchronous machines: order of reactances and time constants, q-axis windings; an unbalanced start |

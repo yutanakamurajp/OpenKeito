@@ -50,7 +50,7 @@ pub const SINGLE_DEVICE_BLOCKING_VOLTAGE_V: f64 = 10e3;
 const OUTPUT_BATCH: usize = 256;
 
 /// Working vectors of a run.
-struct Work {
+pub(in crate::sim) struct Work {
     b: Vec<f64>,
     x: Vec<f64>,
     row: Vec<f64>,
@@ -84,6 +84,56 @@ struct Work {
     /// 172 ns for the buck converter of `tests/power_electronics.rs`).
     diode_states: Vec<bool>,
     diode_currents: Vec<f64>,
+    /// Current zero-order-held controller overrides `(signal_index, value)`.
+    overrides: Vec<(usize, f64)>,
+    /// Scratch buffer for updates returned by one controller invocation.
+    controller_updates: Vec<(usize, f64)>,
+}
+
+pub(in crate::sim) trait ControllerHook {
+    const ENABLED: bool;
+    fn call(
+        &mut self,
+        t: f64,
+        columns: &[f64],
+        signals: &[f64],
+        updates: &mut Vec<(usize, f64)>,
+    ) -> Result<(), String>;
+}
+
+struct NoController;
+
+impl ControllerHook for NoController {
+    const ENABLED: bool = false;
+    #[inline(always)]
+    fn call(
+        &mut self,
+        _t: f64,
+        _columns: &[f64],
+        _signals: &[f64],
+        _updates: &mut Vec<(usize, f64)>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+struct FnController<C>(C);
+
+impl<C> ControllerHook for FnController<C>
+where
+    C: FnMut(f64, &[f64], &[f64], &mut Vec<(usize, f64)>) -> Result<(), String>,
+{
+    const ENABLED: bool = true;
+    #[inline]
+    fn call(
+        &mut self,
+        t: f64,
+        columns: &[f64],
+        signals: &[f64],
+        updates: &mut Vec<(usize, f64)>,
+    ) -> Result<(), String> {
+        (self.0)(t, columns, signals, updates)
+    }
 }
 
 /// The factors of the system matrix, part by part.
@@ -203,6 +253,8 @@ pub struct Simulator {
     /// One part and no element with an operating point: a stage is one
     /// solution of one matrix.
     simple: bool,
+    /// Measure control evaluation time (`Timing::control_s`).
+    detail_timing: bool,
 }
 
 impl std::fmt::Debug for Simulator {
@@ -455,6 +507,7 @@ impl Simulator {
             plain: true,
             divide: m.simulation.partitioning() != model::Partitioning::Off,
             simple: !divided && net.roles.operating_points.is_empty(),
+            detail_timing: false,
             switching: m.simulation.switching(),
             crossings,
             stage_history: net.elements.iter().any(|e| e.decoupled_ends().is_some()),
@@ -492,6 +545,11 @@ impl Simulator {
         &self.columns
     }
 
+    /// Names of all control signals in the order indexed by `updates`.
+    pub fn signal_names(&self) -> &[String] {
+        self.controls.names()
+    }
+
     /// Number of unknowns of the circuit equations.
     pub fn unknowns(&self) -> usize {
         self.labels.len()
@@ -519,6 +577,12 @@ impl Simulator {
     pub fn use_threads(&mut self, threads: usize) {
         self.threads = threads.max(1);
         self.exact_threads = true;
+    }
+
+    /// Measures the time spent evaluating control blocks (`Timing::control_s`).
+    pub fn with_detail_timing(mut self, enabled: bool) -> Self {
+        self.detail_timing = enabled;
+        self
     }
 
     /// Solves every step stage by stage over the whole circuit, as the
@@ -1173,17 +1237,8 @@ impl Simulator {
         }
     }
 
-    /// Evaluates the control blocks at the grid point `t`, on the measured
-    /// quantities of its solution.
-    fn evaluate_controls(
-        &mut self,
-        t: f64,
-        measured: &[f64],
-        stats: &mut RunStats,
-    ) -> Result<(), SimError> {
-        let result = self.controls.evaluate(t, measured);
-        stats.control_loop_iterations = self.controls.loop_iterations;
-        result.map_err(|e| match e {
+    fn map_control_error(t: f64, e: ControlError) -> SimError {
+        match e {
             ControlError::LoopNotConverged { blocks } => SimError::ControlLoopNotConverged {
                 time_s: t,
                 blocks,
@@ -1194,7 +1249,97 @@ impl Simulator {
                 signal,
                 block_type,
             },
-        })
+        }
+    }
+
+    /// Evaluates the control blocks at the grid point `t`, on the measured
+    /// quantities of its solution.
+    fn evaluate_controls(
+        &mut self,
+        t: f64,
+        measured: &[f64],
+        stats: &mut RunStats,
+    ) -> Result<(), SimError> {
+        let started = self.detail_timing.then(Stopwatch::start);
+        let result = self.controls.evaluate(t, measured);
+        stats.control_loop_iterations = self.controls.loop_iterations;
+        if let Some(started) = started {
+            stats.timing.control_s += started.elapsed_s();
+        }
+        result.map_err(|e| Self::map_control_error(t, e))
+    }
+
+    /// Evaluates controls at grid point `t`, optionally invoking `controller`
+    /// after previewing fresh measurements and upstream blocks, and holding
+    /// the latest overrides across intermediate ZOH steps.
+    fn evaluate_controls_with_controller<C: ControllerHook>(
+        &mut self,
+        t: f64,
+        call_controller: bool,
+        w: &mut Work,
+        stats: &mut RunStats,
+        controller: &mut C,
+    ) -> Result<(), SimError> {
+        let started = self.detail_timing.then(Stopwatch::start);
+        let result = if call_controller {
+            if !self.controls.is_empty() {
+                self.controls
+                    .evaluate_preview_state(t, &w.measured, &w.overrides)
+                    .map_err(|e| Self::map_control_error(t, e))?;
+            }
+            for (p, out) in self.probes.iter().zip(w.row.iter_mut()) {
+                if let Probe::Signal(i) = *p {
+                    *out = self.controls.values[i];
+                }
+            }
+            w.controller_updates.clear();
+            controller
+                .call(t, &w.row, &self.controls.values, &mut w.controller_updates)
+                .map_err(|message| SimError::Controller { time_s: t, message })?;
+            let n_signals = self.controls.names().len();
+            for &(sig_idx, val) in &w.controller_updates {
+                if sig_idx >= n_signals {
+                    return Err(SimError::Controller {
+                        time_s: t,
+                        message: format!(
+                            "signal index {sig_idx} is out of range (model has {n_signals} control signals)"
+                        ),
+                    });
+                }
+                if !val.is_finite() {
+                    return Err(SimError::Controller {
+                        time_s: t,
+                        message: format!(
+                            "controller returned non-finite value ({val}) for signal \"{}\"",
+                            self.controls.names()[sig_idx]
+                        ),
+                    });
+                }
+                if let Some(existing) = w.overrides.iter_mut().find(|(idx, _)| *idx == sig_idx) {
+                    existing.1 = val;
+                } else {
+                    w.overrides.push((sig_idx, val));
+                }
+            }
+            if self.controls.is_empty() {
+                Ok(())
+            } else {
+                self.controls
+                    .evaluate_with_overrides(t, &w.measured, &w.overrides)
+                    .map_err(|e| Self::map_control_error(t, e))
+            }
+        } else if !self.controls.is_empty() {
+            self.controls
+                .evaluate_with_overrides(t, &w.measured, &w.overrides)
+                .map_err(|e| Self::map_control_error(t, e))
+        } else {
+            Ok(())
+        };
+        stats.control_loop_iterations = self.controls.loop_iterations;
+        if let Some(started) = started {
+            stats.timing.control_s += started.elapsed_s();
+        }
+        result
     }
 
     /// Like `attempt`, for a part of a step in which zero crossings are
@@ -1290,16 +1435,73 @@ impl Simulator {
     /// Like `run`, but a run that fails also returns what it counted up to
     /// the failure: the switching events before a singular matrix are often
     /// its cause.
-    pub fn run_with_stats<F>(mut self, mut sink: F) -> (RunStats, Result<(), SimError>)
+    pub fn run_with_stats<F>(self, sink: F) -> (RunStats, Result<(), SimError>)
     where
         F: FnMut(f64, &[f64]) -> std::io::Result<()>,
     {
+        self.run_with_stats_inner(sink, 1, NoController)
+    }
+
+    /// Runs the simulation with an external controller called at `t = 0` and
+    /// every `interval_steps` steps, holding its latest signal overrides with
+    /// zero-order hold in between.
+    pub fn run_with_controller<F, C>(
+        self,
+        sink: F,
+        interval_steps: u64,
+        controller: C,
+    ) -> Result<RunStats, SimError>
+    where
+        F: FnMut(f64, &[f64]) -> std::io::Result<()>,
+        C: FnMut(f64, &[f64], &[f64], &mut Vec<(usize, f64)>) -> Result<(), String>,
+    {
+        let (stats, result) = self.run_with_stats_and_controller(sink, interval_steps, controller);
+        result.map(|_| stats)
+    }
+
+    /// Like `run_with_controller`, returning statistics even if the run fails.
+    pub fn run_with_stats_and_controller<F, C>(
+        self,
+        sink: F,
+        interval_steps: u64,
+        controller: C,
+    ) -> (RunStats, Result<(), SimError>)
+    where
+        F: FnMut(f64, &[f64]) -> std::io::Result<()>,
+        C: FnMut(f64, &[f64], &[f64], &mut Vec<(usize, f64)>) -> Result<(), String>,
+    {
+        if interval_steps == 0 {
+            return (
+                RunStats::default(),
+                Err(SimError::Controller {
+                    time_s: 0.0,
+                    message: "control interval_steps must be at least 1".to_string(),
+                }),
+            );
+        }
+        self.run_with_stats_inner(sink, interval_steps, FnController(controller))
+    }
+
+    fn run_with_stats_inner<F, C>(
+        mut self,
+        mut sink: F,
+        interval_steps: u64,
+        mut controller: C,
+    ) -> (RunStats, Result<(), SimError>)
+    where
+        F: FnMut(f64, &[f64]) -> std::io::Result<()>,
+        C: ControllerHook,
+    {
         let started = Stopwatch::start();
         let mut stats = RunStats::default();
-        let result = self.run_loop(&mut sink, &mut stats);
+        let result =
+            self.run_loop_with_controller(&mut sink, interval_steps, &mut controller, &mut stats);
         let t = &mut stats.timing;
         t.total_s = started.elapsed_s();
         t.solve_s = (t.total_s - t.factorize_s - t.output_s).max(0.0);
+        if self.detail_timing {
+            LAST_DETAIL_CONTROL_S.with(|c| c.set(t.control_s));
+        }
         (stats, result)
     }
 
@@ -1310,10 +1512,28 @@ impl Simulator {
         (1e-9 * self.h).max(4.0 * f64::EPSILON * t)
     }
 
+    #[cfg(test)]
     fn run_loop<F>(&mut self, sink: &mut F, stats: &mut RunStats) -> Result<(), SimError>
     where
         F: FnMut(f64, &[f64]) -> std::io::Result<()>,
     {
+        self.run_loop_with_controller(sink, 1, &mut NoController, stats)
+    }
+
+    fn run_loop_with_controller<F, C>(
+        &mut self,
+        sink: &mut F,
+        interval_steps: u64,
+        controller: &mut C,
+        stats: &mut RunStats,
+    ) -> Result<(), SimError>
+    where
+        F: FnMut(f64, &[f64]) -> std::io::Result<()>,
+        C: ControllerHook,
+    {
+        if std::env::var_os("OPENKEITO_DETAIL_TIMING").is_some() {
+            self.detail_timing = true;
+        }
         let h = self.h;
         let n = self.labels.len();
         stats.unknowns = n;
@@ -1358,6 +1578,8 @@ impl Simulator {
             staged: vec![0.0; self.outputs.as_ref().map_or(0, |o| o.destinations.len())],
             diode_states: Vec::with_capacity(self.diodes.len()),
             diode_currents: Vec::with_capacity(self.diodes.len()),
+            overrides: Vec::new(),
+            controller_updates: Vec::new(),
         };
         // The threads of the run and their tasks: several groups of parts
         // per thread, so that a thread on a slower core holds up less.
@@ -1378,7 +1600,15 @@ impl Simulator {
             None => None,
         };
 
-        let run_result = self.run_steps(&stages, &mut w, &mut steady, sink, stats);
+        let run_result = self.run_steps(
+            &stages,
+            &mut w,
+            &mut steady,
+            sink,
+            interval_steps,
+            controller,
+            stats,
+        );
         let flush_result = Self::flush_output(&mut w, sink, stats);
         self.pool = None;
         run_result?;
@@ -1387,19 +1617,23 @@ impl Simulator {
         Ok(())
     }
 
-    fn run_steps<F>(
+    #[allow(clippy::too_many_arguments)]
+    fn run_steps<F, C>(
         &mut self,
         stages: &Stages,
         w: &mut Work,
         steady: &mut Option<Steady>,
         sink: &mut F,
+        interval_steps: u64,
+        controller: &mut C,
         stats: &mut RunStats,
     ) -> Result<(), SimError>
     where
         F: FnMut(f64, &[f64]) -> std::io::Result<()>,
+        C: ControllerHook,
     {
         let h = self.h;
-        self.start(stages, w, steady, stats)?;
+        self.start(stages, w, steady, controller, stats)?;
         self.emit(0.0, w, sink, stats)?;
 
         let mut matrix = Matrix {
@@ -1408,10 +1642,29 @@ impl Simulator {
         };
         self.refresh(&mut matrix.lu, stages.alpha(), 0.0, stats)?;
         for step in 0..self.steps {
+            let call_controller = C::ENABLED && (step + 1) % interval_steps == 0;
             if self.switching == model::Switching::Interpolated {
-                self.step_split(step, stages, &mut matrix, w, steady, stats)?;
+                self.step_split(
+                    step,
+                    call_controller,
+                    stages,
+                    &mut matrix,
+                    w,
+                    steady,
+                    controller,
+                    stats,
+                )?;
             } else {
-                self.step(step, stages, &mut matrix, w, steady, stats)?;
+                self.step(
+                    step,
+                    call_controller,
+                    stages,
+                    &mut matrix,
+                    w,
+                    steady,
+                    controller,
+                    stats,
+                )?;
             }
             if (step + 1) % self.interval == 0 {
                 self.emit((step + 1) as f64 * h, w, sink, stats)?;
@@ -1425,11 +1678,12 @@ impl Simulator {
     /// initial conditions. The controls are evaluated on this solution; if
     /// they turn a switch on, or change a value that an element reads,
     /// t = 0+ is solved again.
-    fn start(
+    fn start<C: ControllerHook>(
         &mut self,
         stages: &Stages,
         w: &mut Work,
         steady: &mut Option<Steady>,
+        controller: &mut C,
         stats: &mut RunStats,
     ) -> Result<(), SimError> {
         let tol = self.action_tolerance(0.0);
@@ -1450,10 +1704,14 @@ impl Simulator {
         let mut lu = Lu::new(self.layout.parts.len());
         for pass in 0..2 {
             if pass == 1 {
-                if self.controls.is_empty() {
+                if self.controls.is_empty() && !C::ENABLED {
                     break;
                 }
-                self.evaluate_controls(0.0, &w.measured, stats)?;
+                if C::ENABLED {
+                    self.evaluate_controls_with_controller(0.0, true, w, stats, controller)?;
+                } else {
+                    self.evaluate_controls(0.0, &w.measured, stats)?;
+                }
                 let (switched, value_changed) = self.read_signals(0.0, stats);
                 if !(switched || value_changed) {
                     break;
@@ -1569,13 +1827,16 @@ impl Simulator {
 
     /// One time step, from grid point `step` to the next: the switching
     /// actions at its start, the stages, and the controls at its end.
-    fn step(
+    #[allow(clippy::too_many_arguments)]
+    fn step<C: ControllerHook>(
         &mut self,
         step: u64,
+        call_controller: bool,
         stages: &Stages,
         matrix: &mut Matrix,
         w: &mut Work,
         steady: &mut Option<Steady>,
+        controller: &mut C,
         stats: &mut RunStats,
     ) -> Result<(), SimError> {
         let h = self.h;
@@ -1619,17 +1880,20 @@ impl Simulator {
         } else {
             self.attempt(&mut matrix.lu, stages_now, t0, t1, w, stats)?;
         }
-        self.end_of_step(t1, false, w, steady, stats)
+        self.end_of_step(t1, false, call_controller, w, steady, controller, stats)
     }
 
     /// Updates step counters, steady-state comparison and controls at the end
     /// of a step (`t1`).
-    fn end_of_step(
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::sim) fn end_of_step<C: ControllerHook>(
         &mut self,
         t1: f64,
         split: bool,
-        w: &Work,
+        call_controller: bool,
+        w: &mut Work,
         steady: &mut Option<Steady>,
+        controller: &mut C,
         stats: &mut RunStats,
     ) -> Result<(), SimError> {
         stats.steps += 1;
@@ -1639,7 +1903,9 @@ impl Simulator {
         if let Some(s) = steady.as_mut() {
             s.check(t1, &w.x, &w.row, &self.voltage_unknowns);
         }
-        if !self.controls.is_empty() {
+        if C::ENABLED {
+            self.evaluate_controls_with_controller(t1, call_controller, w, stats, controller)?;
+        } else if !self.controls.is_empty() {
             self.evaluate_controls(t1, &w.measured, stats)?;
         }
         Ok(())
@@ -1804,6 +2070,17 @@ fn measured_terms(
     Err(Box::new(model::Quantity::missing(
         letter, component, suffix, &existing, path,
     )))
+}
+
+thread_local! {
+    static LAST_DETAIL_CONTROL_S: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+}
+
+/// Control evaluation time recorded by the last run with detail timing enabled
+/// on the current thread.
+#[doc(hidden)]
+pub fn last_detail_control_s() -> f64 {
+    LAST_DETAIL_CONTROL_S.with(std::cell::Cell::get)
 }
 
 #[cfg(test)]
@@ -2022,5 +2299,230 @@ mod tests {
             .unwrap();
         assert_eq!(times.len(), 301);
         assert_eq!(stats.rows, 301);
+    }
+
+    #[test]
+    fn detail_timing_measures_control_evaluation_time() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        let text = std::fs::read_to_string(dir.join("control_blocks.json")).unwrap();
+        let model = openkeito_model::load_str(&text).unwrap().model;
+        let stats = Simulator::from_model(&model)
+            .unwrap()
+            .with_detail_timing(true)
+            .run(|_, _| Ok(()))
+            .unwrap();
+        assert!(
+            stats.timing.control_s > 0.0 && stats.timing.control_s <= stats.timing.solve_s,
+            "control_s={} solve_s={}",
+            stats.timing.control_s,
+            stats.timing.solve_s
+        );
+        let serialized = serde_json::to_value(&stats.timing).unwrap();
+        assert!(serialized.get("control_s").is_none());
+
+        if std::env::var_os("OPENKEITO_DETAIL_TIMING").is_none() {
+            let default_stats = Simulator::from_model(&model)
+                .unwrap()
+                .run(|_, _| Ok(()))
+                .unwrap();
+            assert_eq!(default_stats.timing.control_s, 0.0);
+        }
+    }
+
+    #[test]
+    fn controller_every_step_matches_builtin_gain_block() {
+        let builtin_json = r#"{
+            "format": "openkeito-model",
+            "version": "0.5",
+            "simulation": {"time_step_s": 1e-4, "end_time_s": 5e-3},
+            "components": [
+                {"type": "controlled_voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "signal": "u"},
+                {"type": "resistor", "name": "R1", "nodes": ["n1", "n2"], "resistance_ohm": 2.0},
+                {"type": "inductor", "name": "L1", "nodes": ["n2", "n3"], "inductance_h": 1e-2},
+                {"type": "capacitor", "name": "C1", "nodes": ["n3", "gnd"], "capacitance_f": 1e-4}
+            ],
+            "controls": [
+                {"type": "constant", "name": "v_ref", "value": 10.0},
+                {"type": "measurement", "name": "v_c", "quantity": {"type": "node_voltage", "node": "n3"}},
+                {"type": "sum", "name": "err", "inputs": ["v_ref", "v_c"], "signs": [1.0, -1.0]},
+                {"type": "gain", "name": "u", "input": "err", "gain": 3.5}
+            ],
+            "outputs": [
+                {"type": "node_voltage", "node": "n3"},
+                {"type": "signal", "signal": "u"}
+            ]
+        }"#;
+        let ctrl_json = r#"{
+            "format": "openkeito-model",
+            "version": "0.5",
+            "simulation": {"time_step_s": 1e-4, "end_time_s": 5e-3},
+            "components": [
+                {"type": "controlled_voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "signal": "u"},
+                {"type": "resistor", "name": "R1", "nodes": ["n1", "n2"], "resistance_ohm": 2.0},
+                {"type": "inductor", "name": "L1", "nodes": ["n2", "n3"], "inductance_h": 1e-2},
+                {"type": "capacitor", "name": "C1", "nodes": ["n3", "gnd"], "capacitance_f": 1e-4}
+            ],
+            "controls": [
+                {"type": "measurement", "name": "v_c", "quantity": {"type": "node_voltage", "node": "n3"}},
+                {"type": "constant", "name": "u", "value": 0.0}
+            ],
+            "outputs": [
+                {"type": "node_voltage", "node": "n3"},
+                {"type": "signal", "signal": "u"}
+            ]
+        }"#;
+
+        let m_ref = openkeito_model::load_str(builtin_json).unwrap().model;
+        let mut ref_rows = Vec::new();
+        Simulator::from_model(&m_ref)
+            .unwrap()
+            .run(|t, row| {
+                ref_rows.push((t, row[0], row[1]));
+                Ok(())
+            })
+            .unwrap();
+
+        let m_ctrl = openkeito_model::load_str(ctrl_json).unwrap().model;
+        let sim = Simulator::from_model(&m_ctrl).unwrap();
+        let v_c_idx = sim.signal_names().iter().position(|n| n == "v_c").unwrap();
+        let u_idx = sim.signal_names().iter().position(|n| n == "u").unwrap();
+        let mut ctrl_rows = Vec::new();
+        let mut calls = 0_u64;
+        sim.run_with_controller(
+            |t, row| {
+                ctrl_rows.push((t, row[0], row[1]));
+                Ok(())
+            },
+            1,
+            |_t, _cols, signals, updates| {
+                calls += 1;
+                let err = 10.0 - signals[v_c_idx];
+                updates.push((u_idx, 3.5 * err));
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(calls, 51);
+        assert_eq!(ref_rows.len(), ctrl_rows.len());
+        for (a, b) in ref_rows.iter().zip(&ctrl_rows) {
+            assert!((a.0 - b.0).abs() <= 1e-15);
+            assert!((a.1 - b.1).abs() <= 1e-12, "V(n3): {} vs {}", a.1, b.1);
+            assert!((a.2 - b.2).abs() <= 1e-12, "S(u): {} vs {}", a.2, b.2);
+        }
+    }
+
+    #[test]
+    fn controller_periodic_zoh_calls_and_holds_between_updates() {
+        let json = r#"{
+            "format": "openkeito-model",
+            "version": "0.5",
+            "simulation": {"time_step_s": 1e-4, "end_time_s": 3.5e-3},
+            "components": [
+                {"type": "controlled_voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "signal": "u"},
+                {"type": "resistor", "name": "R1", "nodes": ["n1", "gnd"], "resistance_ohm": 10.0}
+            ],
+            "controls": [
+                {"type": "constant", "name": "u", "value": 0.0}
+            ],
+            "outputs": [
+                {"type": "node_voltage", "node": "n1"},
+                {"type": "signal", "signal": "u"}
+            ]
+        }"#;
+        let model = openkeito_model::load_str(json).unwrap().model;
+        let sim = Simulator::from_model(&model).unwrap();
+        assert_eq!(sim.steps, 35);
+        let u_idx = sim.signal_names().iter().position(|n| n == "u").unwrap();
+        let mut calls = Vec::new();
+        let mut rows = Vec::new();
+        sim.run_with_controller(
+            |t, row| {
+                rows.push((t, row[0], row[1]));
+                Ok(())
+            },
+            10,
+            |t, _cols, _signals, updates| {
+                let k = calls.len() + 1;
+                calls.push(t);
+                updates.push((u_idx, k as f64));
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        // steps = 35, interval_steps = 10 -> t = 0, 10h, 20h, 30h -> 4 calls.
+        assert_eq!(calls.len() as u64, 1 + 35 / 10);
+        assert_eq!(rows.len(), 36);
+        for (step, &(_, v_n1, s_u)) in rows.iter().enumerate() {
+            let expected_u = (step / 10 + 1) as f64;
+            assert_eq!(s_u, expected_u, "step {step}");
+            // At step 0, pass 1 sets u = 1.0 and re-solves t = 0+.
+            // At step 10, u becomes 2.0 at end_of_step, reaching circuit at step 11.
+            let expected_v = if step == 0 {
+                1.0
+            } else {
+                ((step - 1) / 10 + 1) as f64
+            };
+            assert!(
+                (v_n1 - expected_v).abs() <= 1e-12,
+                "step {step}: {v_n1} vs {expected_v}"
+            );
+        }
+    }
+
+    #[test]
+    fn controller_error_stops_with_e252_and_flushes_partial_rows() {
+        // Steps = 300 (> OUTPUT_BATCH = 256), fail at step 280.
+        let json = r#"{
+            "format": "openkeito-model",
+            "version": "0.5",
+            "simulation": {"time_step_s": 1e-4, "end_time_s": 3e-2},
+            "components": [
+                {"type": "controlled_voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "signal": "u"},
+                {"type": "resistor", "name": "R1", "nodes": ["n1", "gnd"], "resistance_ohm": 10.0}
+            ],
+            "controls": [
+                {"type": "constant", "name": "u", "value": 0.0}
+            ],
+            "outputs": [
+                {"type": "node_voltage", "node": "n1"},
+                {"type": "signal", "signal": "u"}
+            ]
+        }"#;
+        let model = openkeito_model::load_str(json).unwrap().model;
+        let sim = Simulator::from_model(&model).unwrap();
+        let u_idx = sim.signal_names().iter().position(|n| n == "u").unwrap();
+        let mut rows = Vec::new();
+        let mut calls = 0_u64;
+        let (stats, res) = sim.run_with_stats_and_controller(
+            |t, row| {
+                rows.push((t, row[0], row[1]));
+                Ok(())
+            },
+            1,
+            |_t, _cols, _signals, updates| {
+                if calls == 280 {
+                    return Err("boom".to_string());
+                }
+                calls += 1;
+                updates.push((u_idx, 1.0));
+                Ok(())
+            },
+        );
+
+        match &res {
+            Err(SimError::Controller { time_s, message }) => {
+                assert!((*time_s - 280e-4).abs() <= 1e-15);
+                assert_eq!(message, "boom");
+            }
+            other => panic!("unexpected result: {other:?}"),
+        }
+        let diag = res.unwrap_err().to_diagnostic();
+        assert_eq!(diag.code, "E252");
+        assert_eq!(diag.path, "controller");
+        // Calls 0..279 emitted rows 0..=279 (280 rows); call 280 at t = 280*h failed before emit.
+        assert_eq!(rows.len(), 280);
+        assert_eq!(stats.rows, 280);
     }
 }

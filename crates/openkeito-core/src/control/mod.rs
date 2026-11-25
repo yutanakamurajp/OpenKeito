@@ -299,10 +299,49 @@ impl Controls {
         self.blocks.is_empty()
     }
 
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
     /// Evaluates every block at time `t`. Call once per grid point, with
     /// `t` increasing by the time step; the first call gives the initial
     /// states.
     pub fn evaluate(&mut self, t: f64, measured: &[f64]) -> Result<(), ControlError> {
+        self.evaluate_inner(t, measured, &[], true)
+    }
+
+    /// Evaluates every block at time `t` with signal `overrides` applied right
+    /// after each block writes its outputs, then commits stateful blocks.
+    pub fn evaluate_with_overrides(
+        &mut self,
+        t: f64,
+        measured: &[f64],
+        overrides: &[(usize, f64)],
+    ) -> Result<(), ControlError> {
+        self.evaluate_inner(t, measured, overrides, true)
+    }
+
+    /// Evaluates every block at time `t` with signal `overrides` without
+    /// committing stateful blocks or marking `started`. Used to expose fresh
+    /// measurements and upstream block outputs to a controller before overrides
+    /// are chosen and committed.
+    pub fn evaluate_preview_state(
+        &mut self,
+        t: f64,
+        measured: &[f64],
+        overrides: &[(usize, f64)],
+    ) -> Result<(), ControlError> {
+        self.evaluate_inner(t, measured, overrides, false)
+    }
+
+    #[inline(always)]
+    fn evaluate_inner(
+        &mut self,
+        t: f64,
+        measured: &[f64],
+        overrides: &[(usize, f64)],
+        commit: bool,
+    ) -> Result<(), ControlError> {
         let ctx = Context {
             t,
             h: self.h,
@@ -315,6 +354,13 @@ impl Controls {
                 let (first, n) = self.ranges[i];
                 self.blocks[i].evaluate(&ctx, &self.values, &mut self.scratch[..n]);
                 self.values[first..first + n].copy_from_slice(&self.scratch[..n]);
+                if !overrides.is_empty() {
+                    for &(sig_idx, val) in overrides {
+                        if (first..first + n).contains(&sig_idx) {
+                            self.values[sig_idx] = val;
+                        }
+                    }
+                }
                 continue;
             }
             let mut passes = 0;
@@ -324,6 +370,13 @@ impl Controls {
                 for &i in &group.blocks {
                     let (first, n) = self.ranges[i];
                     self.blocks[i].evaluate(&ctx, &self.values, &mut self.scratch[..n]);
+                    if !overrides.is_empty() {
+                        for &(sig_idx, val) in overrides {
+                            if (first..first + n).contains(&sig_idx) {
+                                self.scratch[sig_idx - first] = val;
+                            }
+                        }
+                    }
                     for (old, new) in self.values[first..first + n].iter_mut().zip(&self.scratch) {
                         // A value that is not finite ends the loop; it is
                         // reported below (f64::max discards NaN, so check it
@@ -350,7 +403,9 @@ impl Controls {
                     });
                 }
             }
-            self.loop_iterations += passes - 1;
+            if commit {
+                self.loop_iterations += passes - 1;
+            }
         }
         if let Some(k) = self.values.iter().position(|v| !v.is_finite()) {
             let block = self
@@ -363,10 +418,12 @@ impl Controls {
                 block_type: self.labels[block].1,
             });
         }
-        for &i in &self.stateful {
-            self.blocks[i].commit(&ctx, &self.values);
+        if commit {
+            for &i in &self.stateful {
+                self.blocks[i].commit(&ctx, &self.values);
+            }
+            self.started = true;
         }
-        self.started = true;
         Ok(())
     }
 
@@ -375,7 +432,13 @@ impl Controls {
     /// states of the blocks held (see `Block::preview`). Nothing is changed.
     /// The blocks of a loop are previewed once, in their order: those with a
     /// state hold their outputs, and the others follow from them.
+    #[cfg(test)]
     pub fn preview(&self, t: f64, out: &mut [f64]) {
+        self.preview_with_overrides(t, out, &[])
+    }
+
+    /// Like `preview`, keeping any `overrides` held over the step.
+    pub fn preview_with_overrides(&self, t: f64, out: &mut [f64], overrides: &[(usize, f64)]) {
         let mut outputs = [0.0; MAX_OUTPUTS];
         for group in &self.plan {
             for &i in &group.blocks {
@@ -383,6 +446,13 @@ impl Controls {
                 outputs[..n].copy_from_slice(&self.values[first..first + n]);
                 self.blocks[i].preview(t, out, &mut outputs[..n]);
                 out[first..first + n].copy_from_slice(&outputs[..n]);
+                if !overrides.is_empty() {
+                    for &(sig_idx, val) in overrides {
+                        if (first..first + n).contains(&sig_idx) {
+                            out[sig_idx] = val;
+                        }
+                    }
+                }
             }
         }
     }

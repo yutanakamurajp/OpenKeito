@@ -3,6 +3,24 @@
 OpenKeito の変更履歴。Conventional Commits 1.0.0 のコミットをもとに書き、バージョンは SemVer 2.0.0 に従う。
 バージョンの正は `Cargo.toml` の `[workspace.package]` の `version`。手順は `AGENTS.md` の「Versions and releases」を参照。
 
+## 0.13.0 (2026-11-25)
+
+M10 段 2〜4（AI 制御用 Python コールバック口、結果不変ホットパス整理、ONNX 設計・OpenEMT 比較計画・RMS 設計整理、および M8 残課題・論文連携図表の整備）: `openkeito.run` から Python の制御関数を毎ステップ／指定の制御周期で呼べる外部制御インターフェースと診断 `E252` を追加し、既存結果を変えないホットパス整理と制御負荷計測、`paper/` の検証図表、Firefox 動作確認および IEC 60617 チェックリスト 58 種更新をまとめた。モデル形式の版は `0.8` のまま、`0.1`〜`0.8` の既存モデルはそのまま読め、v0.12.0 の例 23 件の実行結果 CSV（55 ファイル）は 0.12.0 とバイト単位で同じ。
+
+### Features
+
+* **py, cli, core:** Python コールバック制御口を追加: `Simulator::run_with_controller` / `run_with_stats_and_controller`、`Controls::evaluate_with_overrides` / `evaluate_preview_state`、`openkeito_cli::run_loaded_with_controller`、`openkeito.run(..., controller=..., control_period_s=..., control_interval_steps=...)` を追加し、`t = 0` および指定の制御更新周期で最新計測値・出力値・信号値を渡して返却された信号上書きをゼロ次ホールドで保持しつつ同一格子点の後段ブロックおよび `interpolated` の `preview` に反映する。不正引数・コールバック例外・未知信号・非有限値の安全停止（途中行保持・診断 `E252`）を実装し、`controller` 未使用時の通常経路への影響をゼロに抑えた（[python/tests/test_ai_control.py](python/tests/test_ai_control.py)）
+* **core:** ゼロオーバーヘッド制御計算時間計測口（`Timing::control_s`、`Simulator::with_detail_timing`、`OPENKEITO_DETAIL_TIMING=1`）とクリーンルーム 5 部分基準ケース（`control_breakdown_and_threads`）を追加（C12 数値振動係数単体試験も `analytic.rs` に追加）
+
+### Performance
+
+* **core:** 既存出力のビット一致を保ったまま、`PartRun::stage` の毎段 `moved` 動的配列確保の廃止（`bool` 追跡＋`#[cold]` 失敗収集分離）、`SynchronousMachine` 3 相 `(sin, cos)` 一括キャッシュ・`reduced(stage.alpha)` 共有、`Sum` / `Product` の 4 入力以内インライン配列保持を適用（[docs/performance.md](docs/performance.md)）
+
+### Documentation, Web & Paper
+
+* **paper:** `paper/figures/ieee39_diagram.py`、`paper/figures/expression_control.py`、`paper/figures/ai_control.py` を `paper/make.py` と [python/tests/test_paper_figures.py](python/tests/test_paper_figures.py) に追加
+* **docs, web, scripts:** `docs/{model,performance,python}.md`、`web/README.md`（Firefox 動作確認記録）、`scripts/README.md`（IEC 60617 チェックリスト 58 種更新）、`plan.md`（3 章改定・RMS 設計メモ・OpenEMT 比較計画・ONNX クレート評価設計メモ・段 2〜4 結果）を更新
+
 ## 0.12.0 (2026-11-25)
 
 M10 段 1（形式 `"0.8"` の数式制御ブロック `expression` の先行公開）: 任意の代数式・初等関数式を文字列で記述できる制御ブロック `expression`（1 入力・複数入力、`variables` 別名マップ、位置変数 `u0, u1`）と、外部クレートを増やさない純 Rust の式パーサ・事前コンパイル済み評価器、式内位置・`hint` 付き診断 `E243`、ブラウザ UI の図記号・フォーム編集、自己完結例 `examples/expression_control.json` を追加。モデル形式の版を `0.8` に上げ、`0.1`〜`0.7` の既存モデルはそのまま読め、v0.11.0 の例 22 件の実行結果 CSV（53 ファイル）は 0.11.0 とバイト単位で同じ。

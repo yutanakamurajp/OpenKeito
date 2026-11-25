@@ -106,26 +106,39 @@ fn inverse(m: &Mat2) -> Mat2 {
     ]
 }
 
-/// The dq components of the phase values `v` for the angle `theta` of the
-/// d axis (amplitude-invariant, q leading d).
+/// `(sin, cos)` of `theta + SHIFT[p]` for the three phases.
 #[inline]
-fn park(theta: f64, v: [f64; 3]) -> Vec2 {
+fn sin_cos_phases(theta: f64) -> [(f64, f64); 3] {
+    SHIFT.map(|shift| (theta + shift).sin_cos())
+}
+
+/// The dq components of the phase values `v` for precomputed phase `(sin, cos)`
+/// pairs (amplitude-invariant, q leading d).
+#[inline]
+fn park_sc(sc: [(f64, f64); 3], v: [f64; 3]) -> Vec2 {
     let (mut d, mut q) = (0.0, 0.0);
     for p in 0..3 {
-        let (s, c) = (theta + SHIFT[p]).sin_cos();
+        let (s, c) = sc[p];
         d += v[p] * c;
         q -= v[p] * s;
     }
     [2.0 / 3.0 * d, 2.0 / 3.0 * q]
 }
 
+/// The phase values of the dq components `x` for precomputed phase `(sin, cos)`
+/// pairs.
+#[inline]
+fn unpark_sc(sc: [(f64, f64); 3], x: Vec2) -> [f64; 3] {
+    [0, 1, 2].map(|p| {
+        let (s, c) = sc[p];
+        x[0] * c - x[1] * s
+    })
+}
+
 /// The phase values of the dq components `x`.
 #[inline]
 fn unpark(theta: f64, x: Vec2) -> [f64; 3] {
-    SHIFT.map(|shift| {
-        let (s, c) = (theta + shift).sin_cos();
-        x[0] * c - x[1] * s
-    })
+    unpark_sc(sin_cos_phases(theta), x)
 }
 
 #[inline]
@@ -249,7 +262,7 @@ struct Eval {
     /// The states of the stage, without the phase currents.
     y: [f64; 6],
     torque: f64,
-    theta: f64,
+    sc: [(f64, f64); 3],
     field_voltage: f64,
     mechanical_torque: f64,
     /// The voltage behind the branch ra, x in the phases, per unit.
@@ -501,6 +514,7 @@ impl SynchronousMachine {
     }
 
     /// What belongs to the stage coefficient `alpha`.
+    #[inline]
     fn reduced(&self, alpha: f64) -> Reduced {
         if let Some(r) = self.reduced.get() {
             if r.alpha == alpha {
@@ -558,13 +572,12 @@ impl SynchronousMachine {
 
     /// Solves the machine equations of a stage at time `t` for the dq
     /// currents `i` (generator convention).
-    fn solve(&self, t: f64, stage: &Stage, i: Vec2) -> Eval {
+    fn solve(&self, t: f64, stage: &Stage, red: &Reduced, i: Vec2) -> Eval {
         if let Some(e) = self.eval.get() {
             if e.t == t && e.alpha == stage.alpha && e.c == stage.c && e.i == i {
                 return e;
             }
         }
-        let red = self.reduced(stage.alpha);
         let kappa = self.omega0 / stage.alpha;
         let ca = stage.c / stage.alpha;
         let bar = |k: usize| self.y[k] + ca * self.f_prev[k];
@@ -587,10 +600,11 @@ impl SynchronousMachine {
             / (1.0 + self.damping / inertia);
         let delta = bar(DELTA) + kappa * (w - 1.0);
         let theta = self.omega0 * t + delta - PI / 2.0;
+        let sc = sin_cos_phases(theta);
         // d(psi~)/dt / w0: the rotor fluxes by the stage formula, and the dq
         // currents from the phase currents of the stage, -i in the rotor
         // frame, whose derivative the stage formula gives in the phases.
-        let before = park(theta, [bar(IA), bar(IA + 1), bar(IA + 2)]);
+        let before = park_sc(sc, [bar(IA), bar(IA + 1), bar(IA + 2)]);
         let did = (id + before[0]) / kappa + w * iq;
         let diq = (iq + before[1]) / kappa - w * id;
         let f_d =
@@ -604,10 +618,10 @@ impl SynchronousMachine {
             i,
             y: [rotor_d[0], rotor_d[1], rotor_q[0], rotor_q[1], w, delta],
             torque,
-            theta,
+            sc,
             field_voltage,
             mechanical_torque,
-            e: unpark(theta, [f_d - w * pt_q, f_q + w * pt_d]),
+            e: unpark_sc(sc, [f_d - w * pt_q, f_q + w * pt_d]),
         };
         self.eval.set(Some(e));
         e
@@ -671,15 +685,17 @@ impl Element for SynchronousMachine {
         stamp_sequences(m, &self.bus, 2.0, 1.0);
     }
     fn rhs(&self, t: f64, stage: &Stage, b: &mut [f64]) {
-        let e = self.solve(t, stage, self.guess(t, stage));
-        let j = self.sources(&self.reduced(stage.alpha), &e, stage);
+        let red = self.reduced(stage.alpha);
+        let e = self.solve(t, stage, &red, self.guess(t, stage));
+        let j = self.sources(&red, &e, stage);
         for p in 0..3 {
             inject(b, self.bus[p], None, self.i_base * j[p]);
         }
     }
     fn current(&self, k: usize, t: f64, stage: &Stage, x: &[f64]) -> f64 {
-        let e = self.solve(t, stage, self.guess(t, stage));
-        self.i_base * self.currents(&self.reduced(stage.alpha), &e, stage, x)[k]
+        let red = self.reduced(stage.alpha);
+        let e = self.solve(t, stage, &red, self.guess(t, stage));
+        self.i_base * self.currents(&red, &e, stage, x)[k]
     }
     fn has_operating_point(&self) -> bool {
         true
@@ -694,11 +710,9 @@ impl Element for SynchronousMachine {
             self.last_change = f64::INFINITY;
             self.tried = None;
         }
-        let e = self.solve(t, stage, guess);
-        let i = park(
-            e.theta,
-            self.currents(&self.reduced(stage.alpha), &e, stage, x),
-        );
+        let red = self.reduced(stage.alpha);
+        let e = self.solve(t, stage, &red, guess);
+        let i = park_sc(e.sc, self.currents(&red, &e, stage, x));
         let found = [-i[0], -i[1]];
         self.found = found;
         let residual = [found[0] - guess[0], found[1] - guess[1]];
@@ -748,8 +762,8 @@ impl Element for SynchronousMachine {
         // `update_operating_point` precedes every `advance`: the guess and
         // its time are those of this stage.
         let t = self.pinned.0;
-        let e = self.solve(t, stage, self.guess);
         let red = self.reduced(stage.alpha);
+        let e = self.solve(t, stage, &red, self.guess);
         let i = self.currents(&red, &e, stage, x);
         let ca = stage.c / stage.alpha;
         let mut y = [0.0; STATES];
@@ -764,7 +778,7 @@ impl Element for SynchronousMachine {
         // The signals belong to grid points: not to the stages of negligible
         // length at t = 0+, where they keep the values of the initial state.
         if stage.commit && !stage.is_initial() {
-            let [vd, vq] = park(e.theta, self.voltages(x));
+            let [vd, vq] = park_sc(e.sc, self.voltages(x));
             let [id, iq] = e.i;
             let i_fd = self.d.currents([y[FD], y[D1]], id)[0];
             self.out[..13].copy_from_slice(&[

@@ -41,6 +41,8 @@ pub enum SimError {
         /// Type of the block that gives the signal.
         block_type: &'static str,
     },
+    /// A user-supplied controller failed or produced an invalid value.
+    Controller { time_s: f64, message: String },
     /// The output sink failed.
     Output(std::io::Error),
 }
@@ -163,6 +165,13 @@ impl SimError {
                  below 1), or a signal grew without bound (check the signs of the feedback and \
                  the gains). Rows written before this time are kept.",
             ),
+            SimError::Controller { time_s, message } => Diagnostic::error(
+                "E252",
+                "controller",
+                format!("the controller failed at t = {time_s:e} s: {message}"),
+                "Check that the controller callback returns finite numbers for existing control \
+                 signals and does not raise an exception. Rows written before this time are kept.",
+            ),
             SimError::Output(e) => Diagnostic::error(
                 "E210",
                 "output",
@@ -220,6 +229,10 @@ mod tests {
                 time_s: 1e-4,
                 signal: "s".to_string(),
                 block_type: "quotient",
+            },
+            SimError::Controller {
+                time_s: 1e-4,
+                message: "callback raised an error".to_string(),
             },
             SimError::Output(std::io::Error::other("disk full")),
         ];

@@ -154,6 +154,7 @@ fn validate_file(path: &std::path::Path) -> (Value, u8) {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let is_run = matches!(cli.command, Command::Run { .. });
     let (document, code) = match cli.command {
         Command::Validate { model } => validate_file(&model),
         Command::Run {
@@ -183,6 +184,21 @@ fn main() -> ExitCode {
             openkeito_cli::topology_file(&model, out.as_deref(), force)
         }
     };
+    if is_run && std::env::var_os("OPENKEITO_DETAIL_TIMING").is_some() {
+        if let Some(timing) = document.get("timing") {
+            if let (Some(solve_s), Some(factorize_s), Some(output_s), Some(run_s)) = (
+                timing.get("solve_s").and_then(Value::as_f64),
+                timing.get("factorize_s").and_then(Value::as_f64),
+                timing.get("output_s").and_then(Value::as_f64),
+                timing.get("run_s").and_then(Value::as_f64),
+            ) {
+                let control_s = openkeito_core::last_detail_control_s();
+                eprintln!(
+                    "OPENKEITO_DETAIL_TIMING control_s={control_s:.6} solve_s={solve_s:.6} factorize_s={factorize_s:.6} output_s={output_s:.6} run_s={run_s:.6}"
+                );
+            }
+        }
+    }
     let text = serde_json::to_string_pretty(&document).expect("JSON document serializes");
     let mut stdout = std::io::stdout().lock();
     if let Err(e) = writeln!(stdout, "{text}").and_then(|()| stdout.flush()) {

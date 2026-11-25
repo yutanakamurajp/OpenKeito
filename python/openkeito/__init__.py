@@ -16,8 +16,9 @@ message, hint) of the summary.
 from __future__ import annotations
 
 import json
+import math
 import os
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any, Union
 
@@ -187,12 +188,61 @@ def run(
     force: bool = False,
     threads: int | None = None,
     check: bool = True,
+    controller: Callable[[float, Mapping[str, float]], Mapping[str, float] | None] | None = None,
+    control_period_s: float | None = None,
+    control_interval_steps: int | None = None,
 ) -> Result:
     """Runs a model. With `out`, also writes result.csv, events.csv and
     summary.json there, as `openkeito run`. `threads` overrides
     simulation.threads. Raises OpenKeitoError unless the run completed (with
-    check=False, returns the failed Result instead)."""
-    result = Result(_native.run(_model_text(model), _out(out), force, threads))
+    check=False, returns the failed Result instead).
+
+    When `controller` is given, it is called as `controller(t, state)` at
+    t = 0 and every `control_interval_steps` steps (or `control_period_s`,
+    defaulting to 1 step), receiving a mapping of control signal names and
+    output column names to floats, and returning a mapping of signal overrides
+    (or None / {} to hold the current zero-order-held values)."""
+    if controller is None:
+        if control_period_s is not None or control_interval_steps is not None:
+            raise ValueError("control_period_s and control_interval_steps require a controller")
+        result = Result(_native.run(_model_text(model), _out(out), force, threads))
+        return result.raise_for_status() if check else result
+
+    if not callable(controller):
+        raise ValueError("controller must be callable")
+    if control_period_s is not None and control_interval_steps is not None:
+        raise ValueError("pass at most one of control_period_s and control_interval_steps")
+
+    interval_steps: int | None = None
+    period_s: float | None = None
+    if control_interval_steps is not None:
+        if isinstance(control_interval_steps, bool) or not isinstance(
+            control_interval_steps, (int, np.integer)
+        ):
+            raise ValueError("control_interval_steps must be an integer >= 1")
+        interval_steps = int(control_interval_steps)
+        if interval_steps < 1:
+            raise ValueError("control_interval_steps must be >= 1")
+    elif control_period_s is not None:
+        if isinstance(control_period_s, bool) or not isinstance(
+            control_period_s, (int, float, np.integer, np.floating)
+        ):
+            raise ValueError("control_period_s must be a finite positive number")
+        period_s = float(control_period_s)
+        if not math.isfinite(period_s) or period_s <= 0.0:
+            raise ValueError("control_period_s must be a finite positive number")
+
+    result = Result(
+        _native.run_with_controller(
+            _model_text(model),
+            controller,
+            _out(out),
+            force,
+            threads,
+            period_s,
+            interval_steps,
+        )
+    )
     return result.raise_for_status() if check else result
 
 

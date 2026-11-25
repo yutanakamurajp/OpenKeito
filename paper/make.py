@@ -43,9 +43,12 @@ ITEMS = [
     "machine_short_circuit",
     "converter_response",
     "controls_v07",
+    "expression_control",
+    "ai_control",
     "wecc_ibr",
     "power_flow_start",
     "schedule_runs",
+    "ieee39_diagram",
     "performance",
     "diagnostics",
 ]

@@ -223,7 +223,8 @@ impl Simulator {
     /// True when an element would switch on the control signals previewed
     /// at time `t`.
     fn would_switch_at(&self, t: f64, w: &mut Work) -> bool {
-        self.controls.preview(t, &mut w.preview);
+        self.controls
+            .preview_with_overrides(t, &mut w.preview, &w.overrides);
         self.signal_readers
             .iter()
             .any(|&i| self.elements[i].would_switch(&w.preview))
@@ -368,7 +369,8 @@ impl Simulator {
             push_event(stats, t, &name, action);
         }
         if let Some(tg) = gate {
-            self.controls.preview(tg, &mut w.preview);
+            self.controls
+                .preview_with_overrides(tg, &mut w.preview, &w.overrides);
             for n in 0..self.signal_readers.len() {
                 let i = self.signal_readers[n];
                 let e = &mut self.elements[i];
@@ -444,13 +446,16 @@ impl Simulator {
     /// One time step with switching instants within it: the actions at the
     /// grid point, then the parts between the instants up to the next grid
     /// point, and the controls there.
-    pub(super) fn step_split(
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn step_split<C: super::ControllerHook>(
         &mut self,
         step: u64,
+        call_controller: bool,
         stages: &Stages,
         matrix: &mut Matrix,
         w: &mut Work,
         steady: &mut Option<Steady>,
+        controller: &mut C,
         stats: &mut RunStats,
     ) -> Result<(), SimError> {
         let h = self.h;
@@ -645,7 +650,7 @@ impl Simulator {
                 }
             }
         }
-        self.end_of_step(t1, split, w, steady, stats)
+        self.end_of_step(t1, split, call_controller, w, steady, controller, stats)
     }
 }
 

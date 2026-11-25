@@ -806,7 +806,42 @@ fn finish(
 /// Runs a loaded model. `label` names it in the summary (its path, or
 /// "<inline>").
 pub fn run_loaded(label: &str, loaded: &Loaded, sha256: &str, opts: &RunOptions) -> RunOutput {
-    run_to(label, loaded, sha256, opts, false)
+    run_to::<
+        fn(&[String], &[String], f64, &[f64], &[f64], &mut Vec<(usize, f64)>) -> Result<(), String>,
+    >(label, loaded, sha256, opts, false, ControllerArg::None)
+}
+
+/// Runs a loaded model with an external controller called at `t = 0` and
+/// every `interval_steps` steps.
+pub fn run_loaded_with_controller<C>(
+    label: &str,
+    loaded: &Loaded,
+    sha256: &str,
+    opts: &RunOptions,
+    interval_steps: u64,
+    controller: C,
+) -> RunOutput
+where
+    C: FnMut(
+        &[String],
+        &[String],
+        f64,
+        &[f64],
+        &[f64],
+        &mut Vec<(usize, f64)>,
+    ) -> Result<(), String>,
+{
+    run_to(
+        label,
+        loaded,
+        sha256,
+        opts,
+        false,
+        ControllerArg::Some {
+            interval_steps,
+            controller,
+        },
+    )
 }
 
 /// Runs a loaded model without touching any file: the result files come
@@ -819,7 +854,9 @@ pub fn run_texts(label: &str, loaded: &Loaded, sha256: &str, threads: Option<usi
         threads,
         ..RunOptions::default()
     };
-    run_to(label, loaded, sha256, &opts, true)
+    run_to::<
+        fn(&[String], &[String], f64, &[f64], &[f64], &mut Vec<(usize, f64)>) -> Result<(), String>,
+    >(label, loaded, sha256, &opts, true, ControllerArg::None)
 }
 
 /// Computes the frequency scan of a loaded model without touching any file:
@@ -828,14 +865,30 @@ pub fn scan_texts(label: &str, loaded: &Loaded, sha256: &str) -> RunOutput {
     scan_to(label, loaded, sha256, &RunOptions::default(), true)
 }
 
+enum ControllerArg<C> {
+    None,
+    Some { interval_steps: u64, controller: C },
+}
+
 /// `keep_text`: without an output directory, keep the result files as text.
-fn run_to(
+fn run_to<C>(
     label: &str,
     loaded: &Loaded,
     sha256: &str,
     opts: &RunOptions,
     keep_text: bool,
-) -> RunOutput {
+    controller: ControllerArg<C>,
+) -> RunOutput
+where
+    C: FnMut(
+        &[String],
+        &[String],
+        f64,
+        &[f64],
+        &[f64],
+        &mut Vec<(usize, f64)>,
+    ) -> Result<(), String>,
+{
     let model = &loaded.model;
     if opts.force {
         if let Some(out) = opts.out.as_deref() {
@@ -881,12 +934,33 @@ fn run_to(
     let mut stats_cols = Statistics::new(names.len());
 
     let started = Stopwatch::start();
-    let (stats, result) = simulator.run_with_stats(|t, values| {
-        table.row(t, values.iter().copied().map(Some))?;
-        stats_cols.add(values);
-        last_time = Some(t);
-        Ok(())
-    });
+    let (stats, result) = match controller {
+        ControllerArg::None => simulator.run_with_stats(|t, values| {
+            table.row(t, values.iter().copied().map(Some))?;
+            stats_cols.add(values);
+            last_time = Some(t);
+            Ok(())
+        }),
+        ControllerArg::Some {
+            interval_steps,
+            mut controller,
+        } => {
+            let signal_names = simulator.signal_names().to_vec();
+            let col_names = names.clone();
+            simulator.run_with_stats_and_controller(
+                |t, values| {
+                    table.row(t, values.iter().copied().map(Some))?;
+                    stats_cols.add(values);
+                    last_time = Some(t);
+                    Ok(())
+                },
+                interval_steps,
+                move |t, columns, signals, updates| {
+                    controller(&col_names, &signal_names, t, columns, signals, updates)
+                },
+            )
+        }
+    };
     // The rows written before a failure stay in result.csv.
     // The text kept in memory comes back after a failure too.
     let finished = table

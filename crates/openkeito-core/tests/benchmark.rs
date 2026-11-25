@@ -658,3 +658,241 @@ fn examples_per_step() {
 fn reference_speed() {
     println!("reference {:.1} us", reference_s() * 1e6);
 }
+
+/// Clean-room 5-part 40-bus system based on `blocks(5, 8, "bergeron_line", end)`:
+/// block 0 keeps a three-phase source as the 50 Hz reference; blocks 1..5 have
+/// synchronous machines with AVR and governor control blocks; every block has
+/// a grid-following converter with plant-level voltage/frequency control blocks
+/// on bus `b{g}_4`. Fault F1 on `b2_4` from 0.1 s to 0.2 s excites rotor
+/// swings, operating-point iterations, and control-loop iterations.
+fn blocks_with_controls(h: f64, end: f64) -> Value {
+    let mut m = blocks(5, 8, "bergeron_line", end);
+    m["name"] = "5 blocks of 8 buses with machines and IBR controls".into();
+    m["simulation"]["time_step_s"] = h.into();
+
+    let components = m["components"].as_array_mut().unwrap();
+    for c in components.iter_mut() {
+        for g in 1..5 {
+            if c["name"] == format!("G{g}") {
+                *c = json!({
+                    "type": "synchronous_machine",
+                    "name": format!("SM{g}"),
+                    "bus": format!("g{g}"),
+                    "rated_power_mva": 100.0,
+                    "rated_voltage_kv": 11.0,
+                    "frequency_hz": F,
+                    "xd_pu": 1.81,
+                    "xq_pu": 1.76,
+                    "xd_transient_pu": 0.30,
+                    "xq_transient_pu": 0.65,
+                    "xd_subtransient_pu": 0.23,
+                    "xq_subtransient_pu": 0.25,
+                    "xl_pu": 0.15,
+                    "ra_pu": 0.003,
+                    "td0_transient_s": 8.0,
+                    "td0_subtransient_s": 0.03,
+                    "tq0_transient_s": 1.0,
+                    "tq0_subtransient_s": 0.07,
+                    "inertia_h_s": 3.5,
+                    "damping_pu": 0.0,
+                    "field_voltage_signal": format!("efd_{g}"),
+                    "mechanical_torque_signal": format!("tm_{g}"),
+                    "operating_point": {
+                        "active_power_mw": 70.0,
+                        "reactive_power_mvar": 15.0,
+                        "voltage_pu": 1.0,
+                        "angle_deg": 0.0
+                    }
+                });
+            }
+        }
+    }
+
+    let mut controls = vec![
+        json!({"type": "constant", "name": "one", "value": 1.0}),
+        json!({"type": "constant", "name": "f_nom", "value": F}),
+    ];
+    for g in 1..5 {
+        let sm = format!("SM{g}");
+        controls.extend([
+            json!({"type": "measurement", "name": format!("vt_{g}"), "quantity": {"type": "component_signal", "component": sm, "signal": "terminal_voltage_pu"}}),
+            json!({"type": "measurement", "name": format!("speed_{g}"), "quantity": {"type": "component_signal", "component": sm, "signal": "speed_pu"}}),
+            json!({"type": "measurement", "name": format!("efd0_{g}"), "quantity": {"type": "component_signal", "component": sm, "signal": "initial_field_voltage_pu"}}),
+            json!({"type": "measurement", "name": format!("tm0_{g}"), "quantity": {"type": "component_signal", "component": sm, "signal": "initial_mechanical_torque_pu"}}),
+            json!({"type": "gain", "name": format!("efd0_over_ka_{g}"), "input": format!("efd0_{g}"), "gain": 0.005}),
+            json!({"type": "sum", "name": format!("vref_now_{g}"), "inputs": [format!("vt_{g}"), format!("efd0_over_ka_{g}")], "signs": [1.0, 1.0]}),
+            json!({"type": "initial_value", "name": format!("vref_{g}"), "input": format!("vref_now_{g}")}),
+            json!({"type": "sum", "name": format!("v_error_{g}"), "inputs": [format!("vref_{g}"), format!("vt_{g}")], "signs": [1.0, -1.0]}),
+            json!({"type": "lag", "name": format!("efd_{g}"), "input": format!("v_error_{g}"), "gain": 200.0, "time_constant_s": 0.02, "minimum": -6.4, "maximum": 7.0}),
+            json!({"type": "initial_value", "name": format!("pref_{g}"), "input": format!("tm0_{g}")}),
+            json!({"type": "sum", "name": format!("speed_error_{g}"), "inputs": ["one", format!("speed_{g}")], "signs": [1.0, -1.0]}),
+            json!({"type": "gain", "name": format!("droop_{g}"), "input": format!("speed_error_{g}"), "gain": 20.0}),
+            json!({"type": "sum", "name": format!("p_command_{g}"), "inputs": [format!("pref_{g}"), format!("droop_{g}")], "signs": [1.0, 1.0]}),
+            json!({"type": "lag", "name": format!("pm_{g}"), "input": format!("p_command_{g}"), "gain": 1.0, "time_constant_s": 0.5, "minimum": 0.0, "maximum": 1.1}),
+            json!({"type": "quotient", "name": format!("tm_{g}"), "inputs": [format!("pm_{g}"), format!("speed_{g}")], "minimum_denominator": 0.1}),
+        ]);
+    }
+
+    for g in 0..5 {
+        let ibr = format!("IBR{g}");
+        components.push(json!({
+            "type": "grid_following_converter",
+            "name": ibr,
+            "bus": format!("b{g}_4"),
+            "rated_power_mva": 20.0,
+            "rated_voltage_kv": 66.0,
+            "rated_frequency_hz": F,
+            "reference": {
+                "type": "power",
+                "active_power_mw": format!("ibr_p_cmd_{g}"),
+                "reactive_power_mvar": format!("ibr_q_cmd_{g}")
+            },
+            "operating_point": {
+                "active_power_mw": 10.0,
+                "reactive_power_mvar": 2.0,
+                "voltage_kv": 66.0,
+                "angle_deg": -30.0
+            }
+        }));
+        controls.extend([
+            json!({"type": "constant", "name": format!("ibr_q0_{g}"), "value": 2.0}),
+            json!({"type": "initial_value", "name": format!("ibr_vref_base_{g}"), "input": format!("{ibr}.v_d")}),
+            json!({"type": "gain", "name": format!("ibr_q_droop0_{g}"), "input": format!("ibr_q0_{g}"), "gain": 0.01}),
+            json!({"type": "sum", "name": format!("ibr_vref_{g}"), "inputs": [format!("ibr_vref_base_{g}"), format!("ibr_q_droop0_{g}")], "signs": [1.0, 1.0]}),
+            json!({"type": "gain", "name": format!("ibr_q_droop_{g}"), "input": format!("ibr_q_cmd_{g}"), "gain": 0.01}),
+            json!({"type": "sum", "name": format!("ibr_verr_{g}"), "inputs": [format!("ibr_vref_{g}"), format!("{ibr}.v_d"), format!("ibr_q_droop_{g}")], "signs": [1.0, -1.0, -1.0]}),
+            json!({"type": "dead_band", "name": format!("ibr_vdb_{g}"), "input": format!("ibr_verr_{g}"), "lower": -0.005, "upper": 0.005}),
+            json!({"type": "gain", "name": format!("ibr_vq_{g}"), "input": format!("ibr_vdb_{g}"), "gain": 40.0}),
+            json!({"type": "sum", "name": format!("ibr_q_sum_{g}"), "inputs": [format!("ibr_q0_{g}"), format!("ibr_vq_{g}")], "signs": [1.0, 1.0]}),
+            json!({"type": "lag", "name": format!("ibr_q_cmd_{g}"), "input": format!("ibr_q_sum_{g}"), "time_constant_s": 0.02, "minimum": -8.0, "maximum": 8.0}),
+            json!({"type": "sum", "name": format!("ibr_ferr_{g}"), "inputs": ["f_nom", format!("{ibr}.pll.frequency_hz")], "signs": [1.0, -1.0]}),
+            json!({"type": "dead_band", "name": format!("ibr_fdb_{g}"), "input": format!("ibr_ferr_{g}"), "lower": -0.015, "upper": 0.015}),
+            json!({"type": "gain", "name": format!("ibr_fp_{g}"), "input": format!("ibr_fdb_{g}"), "gain": 8.0}),
+            json!({"type": "constant", "name": format!("ibr_p0_{g}"), "value": 10.0}),
+            json!({"type": "sum", "name": format!("ibr_p_sum_{g}"), "inputs": [format!("ibr_p0_{g}"), format!("ibr_fp_{g}")], "signs": [1.0, 1.0]}),
+            json!({"type": "lag", "name": format!("ibr_p_cmd_{g}"), "input": format!("ibr_p_sum_{g}"), "time_constant_s": 0.02, "minimum": 0.0, "maximum": 20.0}),
+        ]);
+    }
+    m["controls"] = Value::Array(controls);
+    m
+}
+
+fn run_control_bench(
+    model: &Value,
+    partitioning: &str,
+    threads: usize,
+    exact_threads: bool,
+    detail_timing: bool,
+) -> (f64, RunStats) {
+    let mut model = model.clone();
+    model["simulation"]["partitioning"] = partitioning.into();
+    let loaded = openkeito_model::load_str(&model.to_string()).expect("valid model");
+    let mut sim = Simulator::from_model(&loaded.model)
+        .expect("builds")
+        .with_detail_timing(detail_timing);
+    if exact_threads {
+        sim.use_threads(threads);
+    } else {
+        sim.set_threads(threads);
+    }
+    let stats = sim.run(|_, _| Ok(())).expect("runs");
+    let per_step = (stats.timing.total_s - stats.timing.output_s) / stats.steps as f64;
+    (per_step, stats)
+}
+
+/// Control-load breakdown, partitioning (`auto`, `every_line`, `off`), thread
+/// scaling (`1..=5`, both `set_threads` auto-cap and `use_threads`), and
+/// time-step sweep (`10, 20, 50 us`) on a clean-room 5-part system with
+/// synchronous machines (AVR/GOV) and grid-following converters (IBR controls).
+#[test]
+#[ignore = "run by hand with --release"]
+fn control_breakdown_and_threads() {
+    const ROUNDS: usize = 3;
+    const END: f64 = 0.3;
+    let base_10 = blocks_with_controls(10e-6, END);
+    let expanded_blocks = openkeito_model::expanded(
+        &openkeito_model::load_str(&base_10.to_string())
+            .expect("valid")
+            .model,
+    )
+    .controls
+    .len();
+
+    let mut configs: Vec<(f64, &str, usize, bool)> = vec![(10e-6, "off", 1, false)];
+    for part in ["auto", "every_line"] {
+        for exact in [false, true] {
+            for threads in 1..=5 {
+                configs.push((10e-6, part, threads, exact));
+            }
+        }
+    }
+    for h in [20e-6, 50e-6] {
+        configs.push((h, "off", 1, false));
+        configs.push((h, "auto", 1, false));
+        configs.push((h, "auto", 5, false));
+        configs.push((h, "auto", 5, true));
+    }
+    if std::env::var_os("OPENKEITO_BENCH_SINGLE").is_some() {
+        configs.retain(|&(_, _, threads, exact)| threads == 1 && !exact);
+    }
+
+    let mut best_plain = vec![f64::INFINITY; configs.len()];
+    let mut best_detail: Vec<Option<RunStats>> = vec![None; configs.len()];
+
+    for _ in 0..ROUNDS {
+        for (idx, &(h, part, threads, exact)) in configs.iter().enumerate() {
+            let model = blocks_with_controls(h, END);
+            let (per_step, _) = run_control_bench(&model, part, threads, exact, false);
+            best_plain[idx] = best_plain[idx].min(per_step);
+
+            let (_, detail) = run_control_bench(&model, part, threads, exact, true);
+            let replace = match &best_detail[idx] {
+                None => true,
+                Some(prev) => detail.timing.solve_s < prev.timing.solve_s,
+            };
+            if replace {
+                best_detail[idx] = Some(detail);
+            }
+        }
+    }
+
+    let s0 = best_detail[0].as_ref().unwrap();
+    let s_div = best_detail.get(1).and_then(|s| s.as_ref()).unwrap_or(s0);
+    println!(
+        "expanded_control_blocks={expanded_blocks} unknowns={} divided_parts={} divided_links={}",
+        s0.unknowns, s_div.parts, s_div.links
+    );
+    println!(
+        "| Step (us) | Partitioning | Mode | Asked threads | Actual threads | Parts (largest) | \
+         Per step (us) | solve_s | control_s | control / solve (%) | control_loop_iterations | \
+         operating_point_iterations | Departure from steady state |"
+    );
+    println!("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+    for (idx, &(h, part, threads, exact)) in configs.iter().enumerate() {
+        let s = best_detail[idx].as_ref().unwrap();
+        let mode = if exact { "use_threads" } else { "set_threads" };
+        let pct = if s.timing.solve_s > 0.0 {
+            100.0 * s.timing.control_s / s.timing.solve_s
+        } else {
+            0.0
+        };
+        let dev = s
+            .initialization
+            .as_ref()
+            .map_or(0.0, |init| init.relative_voltage_deviation);
+        println!(
+            "| {:.0} | {part} | {mode} | {threads} | {} | {} ({}) | {:.2} | {:.4} | {:.4} | {:.1} | {} | {} | {:.2e} |",
+            h * 1e6,
+            s.threads,
+            s.parts,
+            s.largest_part_unknowns,
+            best_plain[idx] * 1e6,
+            s.timing.solve_s,
+            s.timing.control_s,
+            pct,
+            s.control_loop_iterations,
+            s.operating_point_iterations,
+            dev,
+        );
+    }
+}

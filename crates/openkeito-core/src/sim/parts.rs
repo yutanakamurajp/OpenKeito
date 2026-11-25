@@ -507,6 +507,33 @@ impl PartRun<'_> {
             .map_err(PartError::NonFinite)
     }
 
+    /// Collects non-converged component names when `MAX_OPERATING_POINT_ITERATIONS`
+    /// is reached.
+    #[cold]
+    #[inline(never)]
+    fn collect_not_converged(
+        elements: &mut [Box<dyn Element>],
+        operating_points: &[usize],
+        t: f64,
+        stage: &Stage,
+        x: &[f64],
+        iterations: u64,
+    ) -> Result<(), PartError> {
+        let mut components = Vec::new();
+        for &i in operating_points {
+            if elements[i].update_operating_point(t, stage, x) != OperatingPoint::Consistent {
+                components.push(elements[i].name().to_string());
+            }
+        }
+        if components.is_empty() {
+            return Ok(());
+        }
+        Err(PartError::NotConverged {
+            components,
+            iterations,
+        })
+    }
+
     /// Solves `stage` at time `t` into `x`, again and again until the
     /// operating point of every element of the part agrees with the
     /// solution. When a stamp changed, the factors in use are replaced by
@@ -527,31 +554,32 @@ impl PartRun<'_> {
             return Ok(());
         }
         let mut iterations = 0;
-        let mut moved = Vec::new();
         loop {
+            if iterations >= MAX_OPERATING_POINT_ITERATIONS {
+                Self::collect_not_converged(
+                    self.elements,
+                    &self.part.operating_points,
+                    t,
+                    stage,
+                    x,
+                    iterations,
+                )?;
+                break;
+            }
             let mut matrix_changed = false;
-            moved.clear();
+            let mut any_moved = false;
             for &i in &self.part.operating_points {
                 match self.elements[i].update_operating_point(t, stage, x) {
                     OperatingPoint::Consistent => {}
-                    OperatingPoint::RhsChanged => moved.push(i),
+                    OperatingPoint::RhsChanged => any_moved = true,
                     OperatingPoint::MatrixChanged => {
                         matrix_changed = true;
-                        moved.push(i);
+                        any_moved = true;
                     }
                 }
             }
-            if moved.is_empty() {
+            if !any_moved {
                 break;
-            }
-            if iterations >= MAX_OPERATING_POINT_ITERATIONS {
-                return Err(PartError::NotConverged {
-                    components: moved
-                        .iter()
-                        .map(|&i| self.elements[i].name().to_string())
-                        .collect(),
-                    iterations,
-                });
             }
             iterations += 1;
             if matrix_changed {

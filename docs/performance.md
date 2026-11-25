@@ -405,3 +405,148 @@ Output (machines and converters, steady, 50 µs):
 - Accuracy of the same kind of runs:
   [numerical-method.md](numerical-method.md#from-one-power-flow-to-the-next) (start 1e-10 pu
   from the power flow; end 1e-5 pu from the next one at 50 µs).
+
+## Control-load breakdown and thread scaling on a divided network (M10)
+
+Test `control_breakdown_and_threads` in `crates/openkeito-core/tests/benchmark.rs` adds
+machines and controls to `blocks(5, 8, "bergeron_line", 0.3)` (5 blocks of 8 buses at
+66 kV joined into a ring by 50 km `bergeron_line` links, 219 unknowns, 5 parts of up to 48
+unknowns and 5 links when divided, 332 expanded control blocks). Block 0 keeps its 11 kV
+`three_phase_source` behind its 100 MVA YNd11 transformer; blocks 1 to 4 replace the
+source with a 100 MVA `synchronous_machine` and 15 AVR and governor control blocks each
+(`one` and `f_nom` shared); every block adds a 20 MVA `grid_following_converter` at
+`b{g}_4` with 16 plant-level voltage/frequency droop control blocks (including a closed Q–V
+droop loop). Fault `F1` on `b2_4` runs from 0.1 s to 0.2 s (0.3 s simulated, best of 3
+rounds, without output).
+
+Control evaluation time (`control_s`) is measured with `Simulator::with_detail_timing(true)`
+(or `OPENKEITO_DETAIL_TIMING=1` with `openkeito run`, which writes
+`OPENKEITO_DETAIL_TIMING control_s=... solve_s=... factorize_s=... output_s=... run_s=...`
+to standard error without changing `summary.json`). `Per step` is measured with detail
+timing disabled (`false`).
+
+One P core (`OPENKEITO_BENCH_SINGLE=1`, mask `400`, Date: 2026-11-25):
+
+| Step (µs) | Partitioning | Parts (largest) | Per step (µs) | `solve_s` | `control_s` | Control / solve (%) | Control loop iter. | Op. point iter. | Departure from steady state |
+|---|---|---|---|---|---|---|---|---|---|
+| 10 | `off` | 1 (219) | 18.24 | 0.5419 | 0.0695 | 12.8 | 384983 | 58836 | 4.60e-2 |
+| 10 | `auto` | 5 (48) | 16.47 | 0.4944 | 0.0691 | 14.0 | 384983 | 233530 | 4.60e-2 |
+| 10 | `every_line` | 5 (48) | 16.51 | 0.4934 | 0.0694 | 14.1 | 384983 | 233530 | 4.60e-2 |
+| 20 | `off` | 1 (219) | 18.10 | 0.2702 | 0.0349 | 12.9 | 199850 | 29410 | 4.59e-2 |
+| 20 | `auto` | 5 (48) | 16.56 | 0.2477 | 0.0351 | 14.2 | 199851 | 117449 | 4.59e-2 |
+| 50 | `off` | 1 (219) | 18.23 | 0.1093 | 0.0144 | 13.2 | 88384 | 11839 | 4.55e-2 |
+| 50 | `auto` | 5 (48) | 16.71 | 0.1001 | 0.0142 | 14.2 | 88384 | 47256 | 4.55e-2 |
+
+Thread scaling at `time_step_s = 10 µs` on the 8 P cores (mask `C03C03`, 30 000 steps;
+`set_threads` applies the automatic `work / 100` thread cap, `use_threads` forces the
+requested count up to the number of parts):
+
+| Partitioning | Mode | Asked threads | Actual threads | Parts (largest) | Per step (µs) | `solve_s` | `control_s` | Control / solve (%) |
+|---|---|---|---|---|---|---|---|---|
+| `off` | `set_threads` | 1 | 1 | 1 (219) | 18.44 | 0.5530 | 0.0708 | 12.8 |
+| `auto` | `set_threads` | 1 | 1 | 5 (48) | 16.75 | 0.5013 | 0.0711 | 14.2 |
+| `auto` | `set_threads` | 2 | 2 | 5 (48) | 14.58 | 0.4318 | 0.0706 | 16.4 |
+| `auto` | `set_threads` | 3 | 3 | 5 (48) | 12.68 | 0.3766 | 0.0731 | 19.4 |
+| `auto` | `set_threads` | 4 | 4 | 5 (48) | 11.04 | 0.3339 | 0.0713 | 21.4 |
+| `auto` | `set_threads` | 5 | 4 | 5 (48) | 11.07 | 0.3353 | 0.0715 | 21.3 |
+| `auto` | `use_threads` | 1 | 1 | 5 (48) | 16.86 | 0.5018 | 0.0704 | 14.0 |
+| `auto` | `use_threads` | 2 | 2 | 5 (48) | 14.40 | 0.4338 | 0.0710 | 16.4 |
+| `auto` | `use_threads` | 3 | 3 | 5 (48) | 12.43 | 0.3785 | 0.0709 | 18.7 |
+| `auto` | `use_threads` | 4 | 4 | 5 (48) | 10.96 | 0.3330 | 0.0737 | 22.1 |
+| `auto` | `use_threads` | 5 | 5 | 5 (48) | 10.92 | 0.3272 | 0.0723 | 22.1 |
+| `every_line` | `set_threads` | 1 | 1 | 5 (48) | 16.78 | 0.5058 | 0.0714 | 14.1 |
+| `every_line` | `set_threads` | 2 | 2 | 5 (48) | 14.38 | 0.4411 | 0.0730 | 16.5 |
+| `every_line` | `set_threads` | 3 | 3 | 5 (48) | 12.70 | 0.3759 | 0.0716 | 19.0 |
+| `every_line` | `set_threads` | 4 | 4 | 5 (48) | 11.13 | 0.3333 | 0.0718 | 21.5 |
+| `every_line` | `set_threads` | 5 | 4 | 5 (48) | 11.08 | 0.3304 | 0.0708 | 21.4 |
+| `every_line` | `use_threads` | 1 | 1 | 5 (48) | 16.80 | 0.5078 | 0.0712 | 14.0 |
+| `every_line` | `use_threads` | 2 | 2 | 5 (48) | 14.50 | 0.4327 | 0.0713 | 16.5 |
+| `every_line` | `use_threads` | 3 | 3 | 5 (48) | 12.64 | 0.3748 | 0.0731 | 19.5 |
+| `every_line` | `use_threads` | 4 | 4 | 5 (48) | 11.15 | 0.3356 | 0.0728 | 21.7 |
+| `every_line` | `use_threads` | 5 | 5 | 5 (48) | 10.91 | 0.3301 | 0.0709 | 21.5 |
+
+Time-step sweep on the 8 P cores (mask `C03C03`):
+
+| Step (µs) | Partitioning | Mode (threads) | Per step (µs) | `solve_s` | `control_s` | Control / solve (%) | Control loop iter. | Op. point iter. | Departure from steady state |
+|---|---|---|---|---|---|---|---|---|---|
+| 10 | `off` | `set_threads` (1) | 18.44 | 0.5530 | 0.0708 | 12.8 | 384983 | 58836 | 4.60e-2 |
+| 10 | `auto` | `set_threads` (1) | 16.75 | 0.5013 | 0.0711 | 14.2 | 384983 | 233530 | 4.60e-2 |
+| 10 | `auto` | `set_threads` (5 → 4) | 11.07 | 0.3353 | 0.0715 | 21.3 | 384983 | 233530 | 4.60e-2 |
+| 10 | `auto` | `use_threads` (5) | 10.92 | 0.3272 | 0.0723 | 22.1 | 384983 | 233530 | 4.60e-2 |
+| 20 | `off` | `set_threads` (1) | 18.47 | 0.2773 | 0.0362 | 13.0 | 199850 | 29410 | 4.59e-2 |
+| 20 | `auto` | `set_threads` (1) | 16.89 | 0.2527 | 0.0354 | 14.0 | 199851 | 117449 | 4.59e-2 |
+| 20 | `auto` | `set_threads` (5 → 4) | 11.06 | 0.1718 | 0.0370 | 21.6 | 199851 | 117449 | 4.59e-2 |
+| 20 | `auto` | `use_threads` (5) | 10.93 | 0.1659 | 0.0372 | 22.4 | 199851 | 117449 | 4.59e-2 |
+| 50 | `off` | `set_threads` (1) | 18.51 | 0.1119 | 0.0150 | 13.4 | 88384 | 11839 | 4.55e-2 |
+| 50 | `auto` | `set_threads` (1) | 17.11 | 0.1024 | 0.0150 | 14.7 | 88384 | 47256 | 4.55e-2 |
+| 50 | `auto` | `set_threads` (5 → 4) | 11.24 | 0.0679 | 0.0149 | 22.0 | 88384 | 47256 | 4.55e-2 |
+| 50 | `auto` | `use_threads` (5) | 11.16 | 0.0657 | 0.0144 | 21.9 | 88384 | 47256 | 4.55e-2 |
+
+- **Control evaluation share.** On one P core at 10 µs, evaluating the 332 expanded control
+  blocks (384 983 control-loop iterations over 30 000 steps) takes 0.0691–0.0695 s: 12.8 %
+  of `solve_s` undivided (`off`) and 14.0–14.1 % when divided on one thread (`auto` /
+  `every_line`).
+- **Dividing on one thread.** Splitting the 219-unknown ring into 5 parts of up to 48
+  unknowns lowers one-thread `per_step` by 9.5–9.7 % at 10 µs (from 18.24 µs to
+  16.47–16.51 µs on `0x400`), because smaller part matrices stay in cache across stages.
+  `operating_point_iterations` is counted per part (233 530 across the 4 machine parts
+  against 58 836 undivided at 10 µs).
+- **Thread scaling and serial bottleneck.** On the 8 P cores at 10 µs, `auto` drops from
+  16.75 µs (1 thread) to 11.04 µs (4 threads) and 10.92 µs (5 threads with `use_threads`),
+  1.53 times faster than divided 1 thread and 1.69 times faster than undivided (`18.44 µs`).
+  Because `controls.evaluate` runs serially on the loop thread (0.0704–0.0737 s), its
+  share of `solve_s` rises from 14.0 % at 1 thread to 22.1 % at 4–5 threads. Combined with
+  per-stage thread hand-overs across 5 parts, forcing 5 threads (`use_threads(5)`) over the
+  automatic cap of 4 (`set_threads(5)`, `work / THREAD_WORK = 4`) gives at most a 1–2 %
+  difference (within run-to-run variation).
+- **`auto` against `every_line`.** Because the internal lines of each 8-bus block are
+  `pi_line`s and each block has 27 named nodes (two blocks exceed the 48-named-node merge
+  limit), `auto` and `every_line` make the same 5 parts and run at the same speed.
+- **Time steps 10, 20 and 50 µs.** The 50 km `bergeron_line` links have a positive-sequence
+  travel time of 169 µs (`>= 50 µs`), so the same 5-part division applies at all three
+  steps. `per_step` changes little with the time step (18.10–18.24 µs undivided,
+  16.47–16.71 µs divided 1 thread on `0x400`; 10.92–11.16 µs at 5 threads on `0xC03C03`),
+  so `solve_s` and `control_s` scale inversely with `time_step_s` while the control share
+  remains 13–14 % (1 thread) and 22 % (4–5 threads).
+
+### Result-preserving hot-path cleanups (M10 stage 3)
+
+Four strictly bit-identical changes (Date: 2026-11-25; all 23 example models match the
+baseline CSV outputs byte-for-byte):
+
+1. `PartRun::stage` (`crates/openkeito-core/src/sim/parts.rs`): tracks operating-point
+   movement with a `bool` during normal iterations and moves component-name collection into
+   a cold error helper when `MAX_OPERATING_POINT_ITERATIONS` is reached, removing the
+   per-stage `Vec` allocation on stages with operating-point iterations.
+2. `SynchronousMachine` (`crates/openkeito-core/src/element/machines.rs`): computes the
+   three-phase `(sin, cos)` pairs once per `Eval` (reused across `solve`,
+   `update_operating_point`, and `advance`) and shares a single `reduced(stage.alpha)` lookup
+   per call.
+3. `Sum` and `Product` control blocks (`crates/openkeito-core/src/control/{blocks,nonlinear}.rs`):
+   store up to 4 inputs inline (`Inline`) to avoid a secondary heap indirection during
+   evaluation.
+
+`control_breakdown_and_threads` at `time_step_s = 10 µs` (best of 3 rounds, pinned):
+
+| Core mask | Partitioning | Mode (threads) | Before: per step (µs) / `solve_s` | After: per step (µs) / `solve_s` | Change |
+|---|---|---|---|---|---|
+| `0x400` (1 P core) | `off` | `set_threads` (1) | 18.15 / 0.5420 | 17.53 / 0.5286 | −3.4 % / −2.5 % |
+| `0x400` (1 P core) | `auto` | `set_threads` (1) | 16.45 / 0.4915 | 15.77 / 0.4753 | −4.1 % / −3.3 % |
+| `0x400` (1 P core) | `every_line` | `set_threads` (1) | 16.43 / 0.4967 | 15.74 / 0.4756 | −4.2 % / −4.2 % |
+| `0xC03C03` (8 P cores) | `auto` | `set_threads` (4) | 11.12 / 0.3333 | 10.81 / 0.3214 | −2.8 % / −3.6 % |
+| `0xC03C03` (8 P cores) | `auto` | `set_threads` (5 → 4) | 11.07 / 0.3305 | 10.73 / 0.3220 | −3.1 % / −2.6 % |
+| `0xC03C03` (8 P cores) | `auto` | `use_threads` (5) | 10.74 / 0.3231 | 10.44 / 0.3160 | −2.8 % / −2.2 % |
+| `0xC03C03` (8 P cores) | `every_line` | `use_threads` (5) | 10.98 / 0.3285 | 10.53 / 0.3114 | −4.1 % / −5.2 % |
+
+`openkeito run` CLI comparison (one P core, mask `0x400`, interleaved best of 3 runs) and
+non-machine parity:
+
+| Example | Before: `run_s` / `solve_s` | After: `run_s` / `solve_s` | Change |
+|---|---|---|---|
+| `examples/buck.json` | 0.01892 / 0.002740 | 0.01911 / 0.002738 | parity (`solve_s` −0.1 %) |
+| `examples/machine_avr_governor.json` | 0.07230 / 0.06918 | 0.06159 / 0.05840 | −14.8 % / −15.6 % |
+| `examples/transition_three_times.json` | 0.32966 / 0.31077 | 0.31644 / 0.29728 | −4.0 % / −4.3 % |
+
+Linear-circuit parity (`pi_ring_per_step`, `0x400`): 10 buses `1.734` vs `1.734 µs/step`
+after against `1.734–1.744 µs/step` before; 100 buses `21.318 µs/step` after against
+`21.302–21.367 µs/step` before.

@@ -47,7 +47,7 @@ def test_every_item_wrote_its_files(out):
     assert [k for k in numbers if k != "_settings"] == items
     for name in ("integration_order", "numerical_oscillation", "buck_switching", "diode_bridge", "fault_currents",
                  "steady_state", "line_models", "machine_short_circuit", "converter_response", "controls_v07",
-                 "wecc_ibr", "performance"):
+                 "expression_control", "ai_control", "wecc_ibr", "ieee39_diagram", "performance"):
         for suffix in ("pdf", "png"):
             assert (out / f"{name}.{suffix}").stat().st_size > 1000, name
     for name in ("fault_currents_table", "controls_v07_table", "diagnostics_table"):
@@ -70,6 +70,9 @@ def test_the_trapezoidal_rule_oscillates_and_2s_dirk_does_not(out):
     assert max(abs(float(r["v_l_2s_dirk_v"])) for r in after) < 1e-6
     assert min(abs(float(r["v_l_trapezoidal_v"])) for r in after) > 1.0
     assert max(abs(float(r["v_l_exact_v"])) for r in after) < 1e-12
+    osc = json.loads((out / "numbers.json").read_text(encoding="utf-8"))["numerical_oscillation"]
+    assert osc["trapezoidal: measured factor per step"] == pytest.approx(-0.9608, abs=1e-3)
+    assert osc["2s-dirk: measured factor per step"] == pytest.approx(-0.044, abs=1e-3)
 
 
 def test_switching_within_the_step_removes_the_first_order_error(out):
@@ -143,6 +146,64 @@ def test_controls_v07_and_wecc_ibr(out):
     assert numbers["wecc_ibr"]["fault peak iq_gen (pu)"] > 0.4
 
 
+def test_expression_control(out):
+    alg = rows(out / "expression_control.csv")
+    assert alg
+    for col in ("poly_sin", "norm_hypot", "ang_atan2", "dq_expr"):
+        assert max(abs(float(r[col]) - float(r[f"{col.split('_')[0] if col == 'dq_expr' else col}_exact"]))
+                   for r in alg) < 1e-12
+        assert max(abs(float(r[col]) - float(r[f"{col.split('_')[0] if col == 'dq_expr' else col}_blocks"]))
+                   for r in alg) < 1e-12
+    assert max(abs(float(r["const_pow"]) - float(r["const_pow_exact"])) for r in alg) < 1e-12
+
+    conv = rows(out / "expression_control_convergence.csv")
+    orders = [float(r["order_x"]) for r in conv if r["order_x"] != "nan"]
+    assert orders and all(1.9 < o < 2.1 for o in orders), orders
+
+    sw = rows(out / "expression_control_switching.csv")
+    assert sw
+    numbers = json.loads((out / "numbers.json").read_text(encoding="utf-8"))["expression_control"]
+    assert numbers["max_algebraic_error"] < 1e-12
+    preview = numbers["interpolated_switching_preview"]
+    assert preview["pwm_max_i_diff_vs_blocks_a"] < 1e-12
+    assert preview["pwm_max_event_time_diff_s"] < 1e-12
+    assert preview["nonlinear_crossing_error_s"] < 1e-12
+
+
+def test_ai_control_figure(out):
+    tbl = rows(out / "ai_control.csv")
+    assert tbl
+    assert max(abs(float(r["abs_diff_vc_v"])) for r in tbl) < 1e-11
+    periods = rows(out / "ai_control_periods.csv")
+    assert periods
+    numbers = json.loads((out / "numbers.json").read_text(encoding="utf-8"))["ai_control"]
+    assert numbers["max_abs_diff_vc_v"] < 1e-11
+    assert numbers["max_abs_diff_u_v"] < 1e-11
+    assert numbers["periodic_zoh"]["1"]["calls"] == 1 + 400
+    assert numbers["periodic_zoh"]["10"]["calls"] == 1 + 400 // 10
+    assert numbers["periodic_zoh"]["25"]["calls"] == 1 + 400 // 25
+
+
+def test_ieee39_diagram(out):
+    pytest.importorskip("pandapower")
+    buses = rows(out / "ieee39_diagram_buses.csv")
+    assert len(buses) == 39
+    assert [int(r["bus"]) for r in buses] == list(range(1, 40))
+    by_bus = {int(r["bus"]): r for r in buses}
+    assert sorted(b for b, r in by_bus.items() if r["has_generator"] == "true") == list(range(30, 40))
+    assert by_bus[30]["is_ibr"] == "true"
+    assert by_bus[31]["is_slack"] == "true"
+    assert by_bus[2]["fault_case"]
+    assert by_bus[16]["fault_case"]
+    for r in buses:
+        assert math.isfinite(float(r["x"])) and math.isfinite(float(r["y"]))
+        assert math.isfinite(float(r["layout_dx"]))
+    numbers = json.loads((out / "numbers.json").read_text(encoding="utf-8"))["ieee39_diagram"]
+    assert numbers["buses"] == 39
+    assert numbers["ibr_bus"] == 30
+    assert numbers["generator_buses"] == list(range(30, 40))
+
+
 def test_power_flow_and_schedule(out):
     pytest.importorskip("pandapower")
     for r in rows(out / "power_flow_start.csv"):
@@ -211,7 +272,8 @@ def test_quick_repeatability_and_settings_guard(tmp_path):
     for d in (d1, d2):
         done = subprocess.run(
             [sys.executable, str(MAKE), "--quick", "--only", "diagnostics", "--only", "performance",
-             "--only", "controls_v07", "--only", "wecc_ibr", "--out", str(d)],
+             "--only", "controls_v07", "--only", "expression_control", "--only", "wecc_ibr",
+             "--only", "ieee39_diagram", "--out", str(d)],
             capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
         )
         assert done.returncode == 0, done.stdout[-2000:] + done.stderr[-4000:]

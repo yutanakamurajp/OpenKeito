@@ -103,7 +103,7 @@ clock costs.
 
 ## What the page does
 
-Checked in Chromium 150 on Windows 11.
+Checked in Chromium 150 and Firefox 155 on Windows 11.
 
 - **Diagram.** The first tab beside the model: the circuit, drawn from the model as it is
   typed (300 ms after the last keystroke, with `validate`). Nothing about the picture is in
@@ -400,7 +400,7 @@ configuration, build image, headers, serving, limits; Wrangler: `pages`; compres
 of this has been run: deploying is done by the maintainer.
 
 What the page needs from a host is little: static files, `text/javascript` for `.js`, ideally
-`application/wasm` for `.wasm`. `web/dist` is 50 files and 4.27 MB (23 examples; limits of
+`application/wasm` for `.wasm`. `web/dist` is 50 files and 4.29 MB (23 examples; limits of
 Pages: 20 000 files, 25 MiB per file).
 
 ### Direct upload (recommended)
@@ -450,7 +450,7 @@ compiled files can be cached, is the recommendation.
 - **Compression.** Cloudflare compresses responses itself (Gzip, Brotli or Zstandard, by what
   the browser accepts), and `application/wasm`, JavaScript, JSON, CSS and HTML are among the
   types it compresses. Do not upload compressed files and do not set `Content-Encoding`. The
-  module is 3.78 MB and 0.94 MB compressed.
+  module is 3.80 MB and 0.95 MB compressed.
 - **Caching.** Leave it to Pages: it sends an `ETag` and revalidates, and a new deploy is
   visible at once. The file names carry no hash, so a long `max-age` would be wrong.
 - **`_headers`** is not required. The one in `web/` (copied into `web/dist`) adds a content
