@@ -1,5 +1,7 @@
 # OpenKeito
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24523022.svg)](https://doi.org/10.5281/zenodo.24523022)
+
 OpenKeito (Keito, 系統 = "power system" in Japanese) is a free electromagnetic transient (EMT)
 simulator for power systems, running on Windows (with CI on Windows, macOS and Linux, and
 Chromium for the browser page) and meant to be driven by people and by AI agents alike.
