@@ -734,7 +734,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "openkeito-cli"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "clap",
  "openkeito-core",
@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "openkeito-core"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "faer",
  "num-complex",
@@ -758,7 +758,7 @@ dependencies = [
 
 [[package]]
 name = "openkeito-model"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "schemars",
  "serde",
@@ -767,7 +767,7 @@ dependencies = [
 
 [[package]]
 name = "openkeito-py"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "numpy",
  "openkeito-cli",
@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "openkeito-wasm"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "js-sys",
  "openkeito-cli",

@@ -3,6 +3,20 @@
 OpenKeito の変更履歴。Conventional Commits 1.0.0 のコミットをもとに書き、バージョンは SemVer 2.0.0 に従う。
 バージョンの正は `Cargo.toml` の `[workspace.package]` の `version`。手順は `AGENTS.md` の「Versions and releases」を参照。
 
+## 0.12.0 (2026-11-25)
+
+M10 段 1（形式 `"0.8"` の数式制御ブロック `expression` の先行公開）: 任意の代数式・初等関数式を文字列で記述できる制御ブロック `expression`（1 入力・複数入力、`variables` 別名マップ、位置変数 `u0, u1`）と、外部クレートを増やさない純 Rust の式パーサ・事前コンパイル済み評価器、式内位置・`hint` 付き診断 `E243`、ブラウザ UI の図記号・フォーム編集、自己完結例 `examples/expression_control.json` を追加。モデル形式の版を `0.8` に上げ、`0.1`〜`0.7` の既存モデルはそのまま読め、v0.11.0 の例 22 件の実行結果 CSV（53 ファイル）は 0.11.0 とバイト単位で同じ。
+
+### Features
+
+* **model, core:** モデル形式 `0.8` を追加: 数式制御ブロック `expression`（`inputs`、`variables` 別名マップ、位置変数 `u0, u1`、定数 `pi, e`、右結合 `^`、14 関数 `sin`/`cos`/`tan`/`atan`/`atan2`/`abs`/`sqrt`/`exp`/`ln`/`sign`/`min`/`max`/`hypot`/`pow`）、外部クレートを使わない再帰下降パーサと事前コンパイル済み評価器（`interpolated` 用 `preview` 対応）、構文誤り・未定義変数/関数・引数数誤りの式内位置・`hint` 付き診断 `E243`、直達ループ `E171`、非有限値停止 `E251`、旧形式 `"0.7"` 以下での使用拒否 `E102` を追加
+* **examples, web:** `examples/expression_control.json` を追加（`web/examples.json`・`README.md` 登録）し、`web/src/{symbols,inspector,inspector_panel}.js` に `CONTROL.expression` 記号（カタログ 58 種）と `variables`（`additionalProperties`）入力・`E243` 診断紐付け、`web/tests/expression.test.mjs` を追加
+
+### Documentation & Release
+
+* **docs:** `docs/model.md`（形式 `0.8`、`expression` の構文・演算子優先順位・関数一覧・`E243`）・`docs/numerical-method.md`・`README.md`・`web/README.md`・`AGENTS.md`・`CITATION.cff` を更新
+* **chore:** 公開リポジトリ向けの URL・`.zenodo.json`・DOI バッジ・Windows CI 設定を更新（`release/public-prep`）
+
 ## 0.11.0 (2026-11-24)
 
 M9 (形式 `"0.7"` の制御ブロック拡張・部品単位定常除外・WECC 汎用 IBR 例と検証材料): 1 次元折れ線テーブルブロック `piecewise_linear`、`lag`・`pi`・`limiter`・`integrator` の上下限への信号名指定、`pi` のアンチワインドアップ方式 `"anti_windup"`（`"conditional"` | `"state"`）、部品単位の定常初期化除外 `"initialization": "exclude"` と接続・直列要素の診断（`E183`・`W185`）、自己完結の WECC 汎用 IBR 例（`examples/wecc_ibr.json`）、および公開用の論文図表・検証テストを追加。モデル形式の版を `0.7` に上げ、`0.1`〜`0.6` の既存モデルはそのまま読め、既存の例 21 件の実行結果 CSV（50 ファイル）は 0.10.0 とバイト単位で同じ。

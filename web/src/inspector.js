@@ -231,9 +231,18 @@ function buildFieldMeta(name, param, propSchema, requiredSet, defs) {
     return field;
   }
 
-  if (resolved.type === "object") {
+  if (resolved.type === "object" || isPlainObject(resolved.additionalProperties)) {
     field.kind = "object";
     field.fields = buildObjectFields(resolved, defs);
+    if (isPlainObject(resolved.additionalProperties)) {
+      field.additionalProperties = buildFieldMeta(
+        `${name}.*`,
+        { unit: "", required: true, description: "" },
+        resolved.additionalProperties,
+        new Set(),
+        defs,
+      );
+    }
     return field;
   }
 

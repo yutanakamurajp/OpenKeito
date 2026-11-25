@@ -964,7 +964,7 @@ export class InspectorPanel {
       const serializeJson = (v, key) =>
         this.jsonDrafts.has(key)
           ? this.jsonDrafts.get(key)
-          : (v === undefined ? "" : JSON.stringify(v, null, 2));
+          : (v === undefined || v === null ? "" : JSON.stringify(v, null, 2));
       const initial = serializeJson(value, draftKey);
       const area = h("textarea", {
         class: "inspector-json-input",
@@ -983,6 +983,28 @@ export class InspectorPanel {
           }
           try {
             const parsed = JSON.parse(raw);
+            if (field.kind === "object" && !isPlainObject(parsed)) {
+              this.jsonDrafts.set(draftKey, area.value);
+              rowError.textContent = "Expected a JSON object.";
+              rowError.hidden = false;
+              return;
+            }
+            if (field.kind === "array" && !Array.isArray(parsed)) {
+              this.jsonDrafts.set(draftKey, area.value);
+              rowError.textContent = "Expected a JSON array.";
+              rowError.hidden = false;
+              return;
+            }
+            if (
+              field.kind === "object" &&
+              field.additionalProperties?.kind === "string" &&
+              Object.values(parsed).some((v) => typeof v !== "string")
+            ) {
+              this.jsonDrafts.set(draftKey, area.value);
+              rowError.textContent = "All map values must be strings.";
+              rowError.hidden = false;
+              return;
+            }
             this.jsonDrafts.delete(draftKey);
             rowError.hidden = true;
             onCommit(parsed);
@@ -1001,7 +1023,8 @@ export class InspectorPanel {
         canSync: () => true,
         sync: (val, active, nextDraftKey) => {
           if (area === active || this.jsonDrafts.has(nextDraftKey)) return;
-          const next = val === undefined ? "" : JSON.stringify(val, null, 2);
+          rowError.hidden = true;
+          const next = val === undefined || val === null ? "" : JSON.stringify(val, null, 2);
           if (area.value !== next) {
             area.textContent = next;
             area.value = next;

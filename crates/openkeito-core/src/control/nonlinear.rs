@@ -1,5 +1,5 @@
 //! The blocks that are not linear: limiter, rate limiter, dead band,
-//! product, quotient, function, selector and the value at t = 0.
+//! product, quotient, function, expression, selector and the value at t = 0.
 
 use openkeito_model as model;
 
@@ -341,5 +341,48 @@ impl Block for InitialValue {
             self.value = signals[self.input];
         }
         out[0] = self.value;
+    }
+}
+
+/// Compiled scalar mathematical expression of input signals.
+pub(super) struct Expression {
+    compiled: model::CompiledExpression,
+    inputs: Vec<usize>,
+}
+
+impl Expression {
+    pub fn new(e: &model::Expression, b: &Build) -> Self {
+        let compiled = e.compile().expect("validated expression");
+        let inputs = compiled
+            .resolved_signals()
+            .iter()
+            .map(|s| b.signal(s))
+            .collect();
+        Expression { compiled, inputs }
+    }
+
+    /// Evaluates the compiled expression for the inputs in `signals`.
+    fn write(&self, signals: &[f64], out: &mut [f64]) {
+        let mut buf = [0.0_f64; 32];
+        let mut heap = Vec::new();
+        let args: &mut [f64] = if self.inputs.len() <= buf.len() {
+            for (slot, &idx) in buf.iter_mut().zip(&self.inputs) {
+                *slot = signals[idx];
+            }
+            &mut buf[..self.inputs.len()]
+        } else {
+            heap.extend(self.inputs.iter().map(|&idx| signals[idx]));
+            &mut heap
+        };
+        out[0] = self.compiled.eval(args);
+    }
+}
+
+impl Block for Expression {
+    fn evaluate(&mut self, _ctx: &Context, signals: &[f64], out: &mut [f64]) {
+        self.write(signals, out);
+    }
+    fn preview(&self, _t: f64, signals: &[f64], out: &mut [f64]) {
+        self.write(signals, out);
     }
 }

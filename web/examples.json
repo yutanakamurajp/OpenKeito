@@ -163,6 +163,13 @@
       "title": "A tour of the control blocks",
       "description": "One set point shaped by a rate limiter, lags, a lead-lag, a delay, a limiter and more. Choose the signals to compare.",
       "columns": ["S(p_step)", "S(p_ramped)", "S(p_filtered)", "S(p_second_order)", "S(p_delayed)"]
+    },
+    {
+      "file": "expression_control.json",
+      "group": "controls",
+      "title": "Expression control blocks",
+      "description": "Single-input, multi-input, and variables-mapped mathematical expressions (model format 0.8) driving a controlled current source into an RC load.",
+      "columns": ["V(n1)", "S(poly_trig)", "S(envelope)", "S(i_cmd)"]
     }
   ]
 }

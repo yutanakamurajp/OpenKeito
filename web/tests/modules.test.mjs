@@ -26,6 +26,8 @@ import "./a11y.test.mjs";
 import "./diagram_edit.test.mjs";
 import "./diagram_power.test.mjs";
 import "./batch_view.test.mjs";
+// M10 stage 1 modules.
+import "./expression.test.mjs";
 
 test("a numeric CSV becomes one array per column", () => {
   const t = parseNumericCsv("time_s,V(n1),I(L1)\n0e0,1.5e0,-2e-3\n1e-6,,3\n");

@@ -1,0 +1,79 @@
+{
+  "format": "openkeito-model",
+  "version": "0.8",
+  "name": "expression control",
+  "description": "Control blocks written with mathematical expression strings: single-input, multi-input, and variables-mapped expressions driving a controlled current source into an RC load.",
+  "simulation": {
+    "time_step_s": 5e-5,
+    "end_time_s": 0.05
+  },
+  "components": [
+    {
+      "type": "controlled_current_source",
+      "name": "J1",
+      "nodes": ["gnd", "n1"],
+      "signal": "i_cmd"
+    },
+    {
+      "type": "resistor",
+      "name": "R1",
+      "nodes": ["n1", "gnd"],
+      "resistance_ohm": 10.0
+    },
+    {
+      "type": "capacitor",
+      "name": "C1",
+      "nodes": ["n1", "gnd"],
+      "capacitance_f": 1e-4
+    }
+  ],
+  "controls": [
+    {
+      "type": "sine_wave",
+      "name": "x",
+      "amplitude": 1.0,
+      "frequency_hz": 50.0
+    },
+    {
+      "type": "ramp",
+      "name": "y",
+      "slope_per_s": 20.0
+    },
+    {
+      "type": "measurement",
+      "name": "v_out",
+      "quantity": {
+        "type": "node_voltage",
+        "node": "n1"
+      }
+    },
+    {
+      "type": "expression",
+      "name": "poly_trig",
+      "inputs": ["x"],
+      "expression": "2*x^2 + sin(x)"
+    },
+    {
+      "type": "expression",
+      "name": "envelope",
+      "inputs": ["x", "y"],
+      "expression": "0.2*hypot(x, y) + 0.1*cos(x - y)"
+    },
+    {
+      "type": "expression",
+      "name": "i_cmd",
+      "variables": {
+        "p": "poly_trig",
+        "env": "envelope",
+        "v": "v_out"
+      },
+      "expression": "0.25*(p + env) - 0.05*v"
+    }
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "n1"},
+    {"type": "signal", "signal": "poly_trig"},
+    {"type": "signal", "signal": "envelope"},
+    {"type": "signal", "signal": "i_cmd"}
+  ]
+}

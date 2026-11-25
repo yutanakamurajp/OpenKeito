@@ -290,6 +290,7 @@ fn schema_and_components_are_machine_readable() {
             "product",
             "quotient",
             "function",
+            "expression",
             "selector",
             "initial_value",
             "step",
@@ -1572,4 +1573,102 @@ fn validate_warns_w185_on_excluded_series_component_but_not_grounded_shunt() {
             .any(|w| w["code"] == "W185"),
         "{val_shunt}"
     );
+}
+
+#[test]
+fn expression_block_validates_maps_topology_runs_and_reports_e251() {
+    let dir = scratch("expression_cli");
+    let model_path = dir.join("expr.json");
+    let out = dir.join("out");
+    let model = serde_json::json!({
+        "format": "openkeito-model",
+        "version": "0.8",
+        "simulation": {"time_step_s": 1e-4, "end_time_s": 5e-4},
+        "components": [
+            {"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {"type": "dc", "value": 1.0}},
+            {"type": "resistor", "name": "R1", "nodes": ["n1", "gnd"], "resistance_ohm": 1.0},
+        ],
+        "controls": [
+            {"type": "ramp", "name": "x", "slope_per_s": 1000.0},
+            {"type": "constant", "name": "va", "value": 1.0},
+            {"type": "constant", "name": "vb", "value": -0.5},
+            {"type": "constant", "name": "vc", "value": -0.5},
+            {"type": "constant", "name": "theta", "value": 0.0},
+            {"type": "abc_to_dq0", "name": "v", "inputs": ["va", "vb", "vc"], "angle": "theta"},
+            {"type": "expression", "name": "expr_out", "inputs": ["x"], "variables": {"vd": "v.d"}, "expression": "2*u0^2 + sin(x) + vd"},
+        ],
+        "outputs": [
+            {"type": "signal", "signal": "x"},
+            {"type": "signal", "signal": "v.d"},
+            {"type": "signal", "signal": "expr_out"},
+        ],
+    });
+    std::fs::write(&model_path, serde_json::to_string_pretty(&model).unwrap()).unwrap();
+
+    let (val, code) = openkeito(&["validate", model_path.to_str().unwrap()]);
+    assert_eq!(code, 0, "{val}");
+    assert_eq!(val["valid"], true);
+
+    let (topo, code) = openkeito(&["topology", model_path.to_str().unwrap()]);
+    assert_eq!(code, 0, "{topo}");
+    assert_eq!(topo["valid"], true);
+    let expr_topo = topo["controls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "expr_out")
+        .unwrap();
+    assert_eq!(expr_topo["type"], "expression");
+
+    let (summary, code) = openkeito(&[
+        "run",
+        model_path.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 0, "{summary}");
+    assert_eq!(summary["status"], "completed");
+    assert_eq!(summary["result"]["rows"], 6);
+
+    let csv = std::fs::read_to_string(out.join("result.csv")).unwrap();
+    let mut lines = csv.lines();
+    assert_eq!(lines.next(), Some("time_s,S(x),S(v.d),S(expr_out)"));
+    for line in lines {
+        let cols: Vec<f64> = line.split(',').map(|s| s.parse().unwrap()).collect();
+        let (x, vd, expr_out) = (cols[1], cols[2], cols[3]);
+        let expected = 2.0 * x * x + x.sin() + vd;
+        assert!(
+            (expr_out - expected).abs() < 1e-12,
+            "{expr_out} vs {expected}"
+        );
+    }
+
+    // Runtime non-finite stops with exit code 1 and E251 diagnostic.
+    let bad_path = dir.join("expr_e251.json");
+    let bad_out = dir.join("bad_out");
+    let bad_model = serde_json::json!({
+        "format": "openkeito-model",
+        "version": "0.8",
+        "simulation": {"time_step_s": 1e-4, "end_time_s": 5e-4},
+        "components": [
+            {"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {"type": "dc", "value": 1.0}},
+            {"type": "resistor", "name": "R1", "nodes": ["n1", "gnd"], "resistance_ohm": 1.0},
+        ],
+        "controls": [
+            {"type": "constant", "name": "zero", "value": 0.0},
+            {"type": "expression", "name": "inv_zero", "inputs": ["zero"], "expression": "1 / zero"},
+        ],
+        "outputs": [{"type": "signal", "signal": "inv_zero"}],
+    });
+    std::fs::write(&bad_path, serde_json::to_string_pretty(&bad_model).unwrap()).unwrap();
+    let (bad_summary, bad_code) = openkeito(&[
+        "run",
+        bad_path.to_str().unwrap(),
+        "--out",
+        bad_out.to_str().unwrap(),
+    ]);
+    assert_eq!(bad_code, 1, "{bad_summary}");
+    assert_eq!(bad_summary["status"], "failed");
+    assert_eq!(bad_summary["errors"][0]["code"], "E251");
+    assert_eq!(bad_summary["errors"][0]["path"], "inv_zero");
 }

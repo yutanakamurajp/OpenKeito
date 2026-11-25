@@ -269,6 +269,7 @@ export const CONTROL = {
   three_phase_measurement: mark("meas 3~", 8),
   dq_limiter: mark("|dq| lim", 8),
   pi_dq: mark("PI dq", 8.5),
+  expression: mark("expr", 8.5),
 };
 
 /// The types of the catalog (`openkeito components`) that have no symbol:

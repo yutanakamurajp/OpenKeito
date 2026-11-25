@@ -62,6 +62,12 @@ fn blocks_07(h: f64, end: f64, controls: Value, signals: &[&str]) -> Value {
     m
 }
 
+fn blocks_08(h: f64, end: f64, controls: Value, signals: &[&str]) -> Value {
+    let mut m = blocks(h, end, controls, signals);
+    m["version"] = json!("0.8");
+    m
+}
+
 /// The error of a run with the step `h` and of one with half of it.
 fn errors_at(h: f64, error: impl Fn(f64) -> f64) -> (f64, f64) {
     (error(h), error(h / 2.0))
@@ -2085,4 +2091,283 @@ fn pi_state_anti_windup_matches_block_composition_converges_and_differs_from_con
         "state: {}",
         r_cmp.column("state")[k_rec]
     );
+}
+
+#[test]
+fn expression_single_and_multi_input_match_block_composition_and_exact() {
+    // Compare single-input expression `2*x^2 + sin(x)` and multi-input expressions
+    // (`sqrt(x^2 + y^2)`, `atan2`, `hypot`, `pow`, `min`, `max`, `sign`, `ln`,
+    // `exp`, `tan`, `atan`, `cos`, `abs`) against equivalent block compositions
+    // and closed-form calculations within 1e-14.
+    let h = 5e-4;
+    let end = 0.01;
+    let m = blocks_08(
+        h,
+        end,
+        json!([
+            {"type": "ramp", "name": "x", "initial": -1.0, "slope_per_s": 250.0},
+            {"type": "sine_wave", "name": "y", "amplitude": 1.2, "frequency_hz": 60.0, "phase_deg": 30.0},
+            // Single-input expression and block composition for 2*x^2 + sin(x)
+            {"type": "expression", "name": "poly_sin", "inputs": ["x"], "expression": "2*x^2 + sin(x)"},
+            {"type": "product", "name": "x2", "inputs": ["x", "x"]},
+            {"type": "gain", "name": "two_x2", "input": "x2", "gain": 2.0},
+            {"type": "function", "name": "sin_x", "function": "sin", "inputs": ["x"]},
+            {"type": "sum", "name": "poly_sin_ref", "inputs": ["two_x2", "sin_x"], "signs": [1.0, 1.0]},
+            // Multi-input norm: sqrt(x^2 + y^2) vs hypot(x, y) vs Function(hypot)
+            {"type": "expression", "name": "norm_sqrt", "inputs": ["x", "y"], "expression": "sqrt(x^2 + y^2)"},
+            {"type": "expression", "name": "norm_hypot", "inputs": ["x", "y"], "expression": "hypot(x, y)"},
+            {"type": "function", "name": "norm_fn", "function": "hypot", "inputs": ["x", "y"]},
+            // atan2(y, x) vs Function(atan2)
+            {"type": "expression", "name": "ang", "inputs": ["x", "y"], "expression": "atan2(y, x)"},
+            {"type": "function", "name": "ang_fn", "function": "atan2", "inputs": ["y", "x"]},
+            // pow, min, max, sign, ln, exp, tan, atan, cos, abs
+            {"type": "expression", "name": "combo", "inputs": ["x", "y"], "expression": "pow(abs(x) + 1, 0.5) + min(x, y, 0.5) + max(x, y, -0.5) + sign(x) + ln(exp(x)) + tan(0.25*x) + atan(x) + cos(y)"},
+        ]),
+        &[
+            "x",
+            "y",
+            "poly_sin",
+            "poly_sin_ref",
+            "norm_sqrt",
+            "norm_hypot",
+            "norm_fn",
+            "ang",
+            "ang_fn",
+            "combo",
+        ],
+    );
+    let r = run(&m);
+    let xs = r.column("x");
+    let ys = r.column("y");
+    for i in 0..r.t.len() {
+        let (x, y) = (xs[i], ys[i]);
+        let exact_poly_sin = 2.0 * x * x + x.sin();
+        assert!((r.column("poly_sin")[i] - exact_poly_sin).abs() < 1e-14);
+        assert!((r.column("poly_sin")[i] - r.column("poly_sin_ref")[i]).abs() < 1e-14);
+
+        let exact_norm = x.hypot(y);
+        assert!((r.column("norm_sqrt")[i] - exact_norm).abs() < 1e-14);
+        assert!((r.column("norm_hypot")[i] - exact_norm).abs() < 1e-14);
+        assert!((r.column("norm_hypot")[i] - r.column("norm_fn")[i]).abs() < 1e-14);
+
+        let exact_ang = y.atan2(x);
+        assert!((r.column("ang")[i] - exact_ang).abs() < 1e-14);
+        assert!((r.column("ang")[i] - r.column("ang_fn")[i]).abs() < 1e-14);
+
+        let sign_x = if x > 0.0 {
+            1.0
+        } else if x < 0.0 {
+            -1.0
+        } else {
+            x
+        };
+        let exact_combo = (x.abs() + 1.0).powf(0.5)
+            + x.min(y).min(0.5)
+            + x.max(y).max(-0.5)
+            + sign_x
+            + x.exp().ln()
+            + (0.25 * x).tan()
+            + x.atan()
+            + y.cos();
+        assert!(
+            (r.column("combo")[i] - exact_combo).abs() < 1e-14,
+            "combo mismatch at row {i}: {} vs {exact_combo}",
+            r.column("combo")[i]
+        );
+    }
+}
+
+#[test]
+fn expression_precedence_constants_variables_and_positional_inputs() {
+    let m = blocks_08(
+        1e-3,
+        1e-3,
+        json!([
+            {"type": "constant", "name": "x", "value": 2.0},
+            {"type": "constant", "name": "e", "value": 5.0},
+            {"type": "constant", "name": "va", "value": 1.0},
+            {"type": "constant", "name": "vb", "value": -0.5},
+            {"type": "constant", "name": "vc", "value": -0.5},
+            {"type": "constant", "name": "theta", "value": 0.0},
+            {"type": "abc_to_dq0", "name": "v", "inputs": ["va", "vb", "vc"], "angle": "theta"},
+            // Unary minus has lower precedence than `^`: -x^2 == -(x^2) = -4.0;
+            // x^-2 == 0.25; right-associative 2^3^2 == 2^9 = 512.
+            {"type": "expression", "name": "prec", "inputs": ["x"], "expression": "-x^2 + x^-2 + 2^3^2"},
+            // Built-in constants `pi` and Euler `e` when no signal named `e` is in inputs.
+            {"type": "expression", "name": "consts", "expression": "pi + e"},
+            // Signal `e` in `inputs` shadows Euler's constant `e`, while `pi` stays built-in.
+            {"type": "expression", "name": "shadow_e", "inputs": ["e"], "expression": "2*e + pi"},
+            // Dotted signals via `variables` (`v.d`, `v.q`) combined with `u0`/`u1`.
+            {"type": "expression", "name": "dq_pos", "inputs": ["x", "v.q"], "variables": {"vd": "v.d"}, "expression": "u0 + vd - 2*u1"},
+        ]),
+        &["prec", "consts", "shadow_e", "dq_pos", "v.d", "v.q"],
+    );
+    let r = run(&m);
+    assert!((r.column("prec")[0] - (-4.0 + 0.25 + 512.0)).abs() < 1e-14);
+    assert!((r.column("consts")[0] - (PI + std::f64::consts::E)).abs() < 1e-14);
+    assert!((r.column("shadow_e")[0] - (10.0 + PI)).abs() < 1e-14);
+    let vd = r.column("v.d")[0];
+    let vq = r.column("v.q")[0];
+    assert!((r.column("dq_pos")[0] - (2.0 + vd - 2.0 * vq)).abs() < 1e-14);
+}
+
+#[test]
+fn expression_closed_loop_with_integrator_converges_at_second_order() {
+    // Nonlinear closed loop: dx/dt = -x^2, x(0) = 1.0 -> exact x(t) = 1 / (1 + t).
+    let model = |h: f64| {
+        blocks_08(
+            h,
+            1.0,
+            json!([
+                {"type": "expression", "name": "rhs", "inputs": ["x"], "expression": "-x^2"},
+                {"type": "integrator", "name": "x", "input": "rhs", "gain_per_s": 1.0, "initial_value": 1.0},
+            ]),
+            &["x"],
+        )
+    };
+    let exact = |t: f64| 1.0 / (1.0 + t);
+    let err_at = |h: f64| run(&model(h)).error("x", exact);
+    assert_second_order("expression closed loop (h, h/2)", errors_at(0.04, err_at));
+    assert_second_order("expression closed loop (h/2, h/4)", errors_at(0.02, err_at));
+}
+
+#[test]
+fn expression_with_interpolated_switching_uses_preview() {
+    // 1) An expression upstream of a comparator in `simulation.switching = "interpolated"`
+    // produces the exact same sub-step switching instants and circuit waveforms as
+    // the equivalent linear block composition.
+    let h = 1e-4;
+    let base_model = |controls: Value| {
+        json!({
+            "format": "openkeito-model",
+            "version": "0.8",
+            "simulation": {"time_step_s": h, "end_time_s": 0.02, "switching": "interpolated"},
+            "components": [
+                {"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {"type": "dc", "value": 24.0}},
+                {"type": "controlled_switch", "name": "S1", "nodes": ["n1", "n2"], "gate": "pwm"},
+                {"type": "resistor", "name": "R1", "nodes": ["n2", "n3"], "resistance_ohm": 4.0},
+                {"type": "inductor", "name": "L1", "nodes": ["n3", "gnd"], "inductance_h": 0.01},
+            ],
+            "controls": controls,
+            "outputs": [
+                {"type": "branch_current", "component": "L1"},
+                {"type": "signal", "signal": "ref"},
+            ],
+        })
+    };
+    let expr_run = run(&base_model(json!([
+        {"type": "sine_wave", "name": "u", "amplitude": 0.6, "frequency_hz": 50.0},
+        {"type": "expression", "name": "ref", "inputs": ["u"], "expression": "0.5 * u + 0.1"},
+        {"type": "triangle_wave", "name": "carrier", "frequency_hz": 1300.0, "minimum": -1.0, "maximum": 1.0},
+        {"type": "comparator", "name": "pwm", "inputs": ["ref", "carrier"]},
+    ])));
+    let ref_run = run(&base_model(json!([
+        {"type": "sine_wave", "name": "u", "amplitude": 0.6, "frequency_hz": 50.0},
+        {"type": "gain", "name": "scaled", "input": "u", "gain": 0.5},
+        {"type": "constant", "name": "bias", "value": 0.1},
+        {"type": "sum", "name": "ref", "inputs": ["scaled", "bias"], "signs": [1.0, 1.0]},
+        {"type": "triangle_wave", "name": "carrier", "frequency_hz": 1300.0, "minimum": -1.0, "maximum": 1.0},
+        {"type": "comparator", "name": "pwm", "inputs": ["ref", "carrier"]},
+    ])));
+    assert!(expr_run.stats.split_steps > 20);
+    assert!(expr_run.stats.instants_within_steps > 20);
+    assert_eq!(expr_run.stats.split_steps, ref_run.stats.split_steps);
+    assert_eq!(expr_run.stats.events.len(), ref_run.stats.events.len());
+    for (ea, eb) in expr_run.stats.events.iter().zip(&ref_run.stats.events) {
+        assert_eq!(ea.action, eb.action);
+        assert!(
+            (ea.time_s - eb.time_s).abs() < 1e-12,
+            "switching instant mismatch: {} vs {}",
+            ea.time_s,
+            eb.time_s
+        );
+    }
+    let max_i_diff = expr_run
+        .column("I(L1)")
+        .iter()
+        .zip(ref_run.column("I(L1)"))
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0, f64::max);
+    assert!(max_i_diff < 1e-12, "max current diff {max_i_diff:e}");
+
+    // 2) Nonlinear expression `u^2` crossing threshold 0.537^2 at exact sub-step
+    // time t* = 0.537 ms (strictly between grid points 0.5 ms and 0.6 ms at h = 0.1 ms).
+    let threshold = 0.537_f64.powi(2);
+    let nonlinear_sw = json!({
+        "format": "openkeito-model",
+        "version": "0.8",
+        "simulation": {"time_step_s": h, "end_time_s": 1e-3, "switching": "interpolated"},
+        "components": [
+            {"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {"type": "dc", "value": 10.0}},
+            {"type": "controlled_switch", "name": "S1", "nodes": ["n1", "n2"], "gate": "gate"},
+            {"type": "resistor", "name": "R1", "nodes": ["n2", "gnd"], "resistance_ohm": 10.0},
+        ],
+        "controls": [
+            {"type": "ramp", "name": "u", "slope_per_s": 1000.0},
+            {"type": "expression", "name": "sq", "inputs": ["u"], "expression": "u^2"},
+            {"type": "constant", "name": "th", "value": threshold},
+            {"type": "comparator", "name": "gate", "inputs": ["sq", "th"]},
+        ],
+        "outputs": [{"type": "node_voltage", "node": "n2"}],
+    });
+    let r_nl = run(&nonlinear_sw);
+    assert_eq!(r_nl.stats.events.len(), 1);
+    assert_eq!(r_nl.stats.instants_within_steps, 1);
+    let t_star = r_nl.stats.events[0].time_s;
+    assert!(
+        (t_star - 0.537e-3).abs() < 1e-6,
+        "interpolated crossing {t_star:e} vs 5.37e-4"
+    );
+}
+
+#[test]
+fn expression_non_finite_stops_with_e251_and_direct_loop_reports_e171() {
+    // Runtime non-finite results: division by zero, negative sqrt, ln(<= 0).
+    for (expr_str, inputs) in [
+        ("1 / zero", vec!["zero"]),
+        ("sqrt(neg)", vec!["neg"]),
+        ("ln(zero)", vec!["zero"]),
+        ("ln(neg)", vec!["neg"]),
+    ] {
+        let m = blocks_08(
+            1e-3,
+            1e-3,
+            json!([
+                {"type": "constant", "name": "zero", "value": 0.0},
+                {"type": "constant", "name": "neg", "value": -1.0},
+                {"type": "expression", "name": "bad_expr", "inputs": inputs, "expression": expr_str},
+            ]),
+            &["bad_expr"],
+        );
+        let err = try_run(&m)
+            .err()
+            .unwrap_or_else(|| panic!("expected E251 for {expr_str}"));
+        let d = err.to_diagnostic();
+        assert_eq!((d.code, d.path.as_str()), ("E251", "bad_expr"), "{d:#?}");
+    }
+
+    // Direct algebraic loops through inputs and through variables -> E171.
+    let loop_inputs = blocks_08(
+        1e-3,
+        1e-3,
+        json!([
+            {"type": "expression", "name": "a", "inputs": ["b"], "expression": "b + 1"},
+            {"type": "gain", "name": "b", "input": "a", "gain": 0.5},
+        ]),
+        &["a"],
+    );
+    let d_in = diagnostics(&loop_inputs);
+    assert_eq!(d_in[0].code, "E171", "{d_in:#?}");
+
+    let loop_vars = blocks_08(
+        1e-3,
+        1e-3,
+        json!([
+            {"type": "expression", "name": "a", "variables": {"vb": "b"}, "expression": "vb + 1"},
+            {"type": "gain", "name": "b", "input": "a", "gain": 0.5},
+        ]),
+        &["a"],
+    );
+    let d_var = diagnostics(&loop_vars);
+    assert_eq!(d_var[0].code, "E171", "{d_var:#?}");
 }

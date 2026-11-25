@@ -182,6 +182,7 @@ fn build(c: &model::Control, b: &Build) -> Box<dyn Block> {
         model::Control::Product(c) => Box::new(nonlinear::Product::new(c, b)),
         model::Control::Quotient(c) => Box::new(nonlinear::Quotient::new(c, b)),
         model::Control::Function(c) => Box::new(nonlinear::Function::new(c, b)),
+        model::Control::Expression(c) => Box::new(nonlinear::Expression::new(c, b)),
         model::Control::Selector(c) => Box::new(nonlinear::Selector::new(c, b)),
         model::Control::PiecewiseLinear(c) => Box::new(nonlinear::PiecewiseLinear::new(c, b)),
         model::Control::InitialValue(c) => Box::new(nonlinear::InitialValue::new(c, b)),
@@ -620,5 +621,50 @@ mod tests {
                 block_type: "quotient"
             })
         );
+    }
+
+    #[test]
+    fn preview_evaluates_expression_and_drives_comparator() {
+        let h = 1e-3;
+        let mut k = controls(
+            h,
+            serde_json::json!([
+                {"type": "ramp", "name": "u", "slope_per_s": 1000.0},
+                {"type": "expression", "name": "sq", "inputs": ["u"], "expression": "2*u^2 - 0.5"},
+                {"type": "constant", "name": "zero", "value": 0.0},
+                {"type": "comparator", "name": "pwm", "inputs": ["sq", "zero"]},
+            ]),
+        );
+        k.evaluate(0.0, &[]).unwrap();
+        assert_eq!(k.values[1], -0.5);
+        assert_eq!(k.values[3], 0.0);
+        let mut ahead = vec![0.0; k.values.len()];
+        // At t = 1 ms: u = 1.0, sq = 1.5, pwm = 1.0.
+        k.preview(1e-3, &mut ahead);
+        assert!((ahead[0] - 1.0).abs() < 1e-15);
+        assert!((ahead[1] - 1.5).abs() < 1e-15);
+        assert_eq!(ahead[3], 1.0);
+        // State at t = 0 is untouched.
+        assert_eq!(k.values[1], -0.5);
+        assert_eq!(k.values[3], 0.0);
+    }
+
+    #[test]
+    fn expression_handles_more_than_32_inputs() {
+        let mut list: Vec<serde_json::Value> = (0..35)
+            .map(|i| serde_json::json!({"type": "constant", "name": format!("c{i}"), "value": (i + 1) as f64}))
+            .collect();
+        let inputs: Vec<String> = (0..35).map(|i| format!("c{i}")).collect();
+        let expr = inputs.join(" + ");
+        list.push(serde_json::json!({
+            "type": "expression",
+            "name": "total",
+            "inputs": inputs,
+            "expression": expr,
+        }));
+        let mut k = controls(1e-3, serde_json::Value::Array(list));
+        k.evaluate(0.0, &[]).unwrap();
+        let expected: f64 = (1..=35).sum::<usize>() as f64;
+        assert_eq!(k.values[35], expected);
     }
 }

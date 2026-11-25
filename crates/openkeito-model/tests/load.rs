@@ -1947,3 +1947,254 @@ fn source_frequency_ignores_excluded_sources() {
     );
     assert_eq!(openkeito_model::source_frequency(&loaded.model), None);
 }
+
+#[test]
+fn expression_block_is_validated_compiled_and_version_gated() {
+    let wrap_controls = |controls: &str, version: &str| {
+        format!(
+            r#"{{
+  "format": "openkeito-model",
+  "version": "{version}",
+  "simulation": {{"time_step_s": 1e-4, "end_time_s": 1e-3}},
+  "components": [
+    {{"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {{"type": "dc", "value": 1.0}}}},
+    {{"type": "resistor", "name": "R1", "nodes": ["n1", "gnd"], "resistance_ohm": 10.0}}
+  ],
+  "controls": [{controls}]
+}}"#
+        )
+    };
+
+    // Version 0.1..0.7 continue to load without expression; 0.7 rejects expression with E102.
+    for v in ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7"] {
+        assert!(
+            load_str(&VALID.replace("\"0.1\"", &format!("\"{v}\""))).is_ok(),
+            "version {v} failed"
+        );
+    }
+
+    let basic = r#"
+    {"type": "constant", "name": "x", "value": 2.0},
+    {"type": "expression", "name": "y_out", "inputs": ["x"], "expression": "2*x^2 + sin(x)"}
+    "#;
+    assert_eq!(codes(&wrap_controls(basic, "0.7")), ["E102"]);
+    assert!(load_str(&wrap_controls(basic, "0.8")).is_ok());
+
+    // Complex valid expression with variables, positional inputs, pi/e, and all 14 functions.
+    let rich = r#"
+    {"type": "constant", "name": "k", "value": 1.0},
+    {"type": "abc_to_dq0", "name": "v", "inputs": ["k", "k", "k"], "angle": "k"},
+    {"type": "constant", "name": "e", "value": 3.0},
+    {"type": "expression", "name": "y1", "inputs": ["k", "v.q"], "variables": {"vd": "v.d"}, "expression": "hypot(vd, u1) + pow(u0, 2) + pi + e^(-1) + min(1, 2, 3) + max(-1, 0) + sign(vd) + atan2(u1, vd) + sin(0) + cos(0) + tan(0) + atan(0) + abs(-1) + sqrt(4) + exp(0) + ln(1)"},
+    {"type": "expression", "name": "y2", "inputs": ["e"], "expression": "2 * e"},
+    {"type": "expression", "name": "y_const", "expression": "2 * pi"}
+    "#;
+    let loaded = load_str(&wrap_controls(rich, "0.8")).unwrap();
+    let topo = openkeito_model::topology(&loaded.model, &[]);
+    let y1_inputs: Vec<(&str, &str)> = topo
+        .controls
+        .iter()
+        .find(|c| c.name == "y1")
+        .unwrap()
+        .inputs
+        .iter()
+        .map(|i| (i.field.as_str(), i.signal.as_str()))
+        .collect();
+    assert_eq!(
+        y1_inputs,
+        vec![
+            ("inputs[0]", "k"),
+            ("inputs[1]", "v.q"),
+            ("variables.vd", "v.d")
+        ]
+    );
+
+    if let openkeito_model::Control::Expression(ref expr_block) = loaded.model.controls[4] {
+        let compiled = expr_block.compile().unwrap();
+        assert_eq!(compiled.resolved_signals(), ["e"]);
+        assert_eq!(compiled.eval(&[3.0]), 6.0);
+    } else {
+        panic!("expected Expression block");
+    }
+
+    // Missing signals in inputs or variables -> E170.
+    let missing_input = r#"
+    {"type": "expression", "name": "y", "inputs": ["missing"], "expression": "missing"}
+    "#;
+    assert_eq!(codes(&wrap_controls(missing_input, "0.8")), ["E170"]);
+
+    let missing_var = r#"
+    {"type": "expression", "name": "y", "variables": {"vd": "missing.d"}, "expression": "vd"}
+    "#;
+    assert_eq!(codes(&wrap_controls(missing_var, "0.8")), ["E170"]);
+
+    // Algebraic loops through inputs or variables -> E171.
+    let loop_input = r#"
+    {"type": "expression", "name": "a", "inputs": ["b"], "expression": "b + 1"},
+    {"type": "gain", "name": "b", "input": "a", "gain": 0.5}
+    "#;
+    assert_eq!(codes(&wrap_controls(loop_input, "0.8")), ["E171"]);
+
+    let loop_var = r#"
+    {"type": "expression", "name": "a", "variables": {"vb": "b"}, "expression": "vb + 1"},
+    {"type": "gain", "name": "b", "input": "a", "gain": 0.5}
+    "#;
+    assert_eq!(codes(&wrap_controls(loop_var, "0.8")), ["E171"]);
+
+    // Loop broken by an integrator is valid.
+    let loop_with_state = r#"
+    {"type": "expression", "name": "err", "inputs": ["x"], "expression": "1 - x"},
+    {"type": "integrator", "name": "x", "input": "err"}
+    "#;
+    assert!(load_str(&wrap_controls(loop_with_state, "0.8")).is_ok());
+}
+
+#[test]
+fn expression_block_reports_e243_with_paths_and_hints() {
+    let wrap_controls = |controls: &str| {
+        format!(
+            r#"{{
+  "format": "openkeito-model",
+  "version": "0.8",
+  "simulation": {{"time_step_s": 1e-4, "end_time_s": 1e-3}},
+  "components": [
+    {{"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {{"type": "dc", "value": 1.0}}}},
+    {{"type": "resistor", "name": "R1", "nodes": ["n1", "gnd"], "resistance_ohm": 10.0}}
+  ],
+  "controls": [{controls}]
+}}"#
+        )
+    };
+
+    let expect_e243 = |controls: &str, expected_path: &str| -> openkeito_model::Diagnostic {
+        let errs = load_str(&wrap_controls(controls)).unwrap_err();
+        assert_eq!(errs.len(), 1, "unexpected diagnostics: {errs:?}");
+        assert_eq!(errs[0].code, "E243");
+        assert_eq!(errs[0].path, expected_path);
+        assert!(!errs[0].message.contains("  "), "{}", errs[0].message);
+        assert!(!errs[0].hint.contains("  "), "{}", errs[0].hint);
+        errs.into_iter().next().unwrap()
+    };
+
+    // Empty expression.
+    expect_e243(
+        r#"{"type": "expression", "name": "y", "expression": ""}"#,
+        "controls[0].expression",
+    );
+
+    // Syntax error.
+    expect_e243(
+        r#"{"type": "constant", "name": "x", "value": 1.0}, {"type": "expression", "name": "y", "inputs": ["x"], "expression": "x +"}"#,
+        "controls[1].expression",
+    );
+
+    // Dot in expression points to "variables" or u0.
+    let d = expect_e243(
+        r#"{"type": "constant", "name": "k", "value": 1.0}, {"type": "abc_to_dq0", "name": "v", "inputs": ["k", "k", "k"], "angle": "k"}, {"type": "expression", "name": "y", "inputs": ["v.d"], "expression": "v.d * 2"}"#,
+        "controls[2].expression",
+    );
+    assert!(d.hint.contains("\"variables\""), "{}", d.hint);
+    assert!(d.hint.contains("u0"), "{}", d.hint);
+
+    // Non-finite number literal.
+    expect_e243(
+        r#"{"type": "expression", "name": "y", "expression": "1e999"}"#,
+        "controls[0].expression",
+    );
+
+    // Unknown variable & out-of-range positional uN.
+    expect_e243(
+        r#"{"type": "constant", "name": "x", "value": 1.0}, {"type": "expression", "name": "y", "inputs": ["x"], "expression": "z + 1"}"#,
+        "controls[1].expression",
+    );
+    expect_e243(
+        r#"{"type": "constant", "name": "x", "value": 1.0}, {"type": "expression", "name": "y", "inputs": ["x"], "expression": "u1"}"#,
+        "controls[1].expression",
+    );
+
+    // Unknown function and wrong arity.
+    expect_e243(
+        r#"{"type": "constant", "name": "x", "value": 1.0}, {"type": "expression", "name": "y", "inputs": ["x"], "expression": "foo(x)"}"#,
+        "controls[1].expression",
+    );
+    for expr_text in ["sin()", "sin(x, x)", "atan2(x)", "pow(x)", "min()", "max()"] {
+        expect_e243(
+            &format!(
+                r#"{{"type": "constant", "name": "x", "value": 1.0}}, {{"type": "expression", "name": "y", "inputs": ["x"], "expression": "{expr_text}"}}"#
+            ),
+            "controls[1].expression",
+        );
+    }
+
+    // Invalid variable identifier, builtin name collision, and inputs collision.
+    expect_e243(
+        r#"{"type": "constant", "name": "x", "value": 1.0}, {"type": "expression", "name": "y", "variables": {"bad.name": "x"}, "expression": "1"}"#,
+        "controls[1].variables.bad.name",
+    );
+    expect_e243(
+        r#"{"type": "constant", "name": "x", "value": 1.0}, {"type": "expression", "name": "y", "variables": {"sin": "x"}, "expression": "1"}"#,
+        "controls[1].variables.sin",
+    );
+    expect_e243(
+        r#"{"type": "constant", "name": "x", "value": 1.0}, {"type": "constant", "name": "z", "value": 2.0}, {"type": "expression", "name": "y", "inputs": ["x"], "variables": {"x": "z"}, "expression": "x"}"#,
+        "controls[2].variables.x",
+    );
+
+    // Duplicate inputs.
+    expect_e243(
+        r#"{"type": "constant", "name": "x", "value": 1.0}, {"type": "expression", "name": "y", "inputs": ["x", "x"], "expression": "x"}"#,
+        "controls[1].inputs[1]",
+    );
+
+    // Nesting depth boundary: 256 levels succeeds, 257 levels returns E243.
+    let at_limit = format!("{}x{}", "(".repeat(256), ")".repeat(256));
+    let ok_model = format!(
+        r#"{{"type": "constant", "name": "x", "value": 1.0}}, {{"type": "expression", "name": "y", "inputs": ["x"], "expression": "{at_limit}"}}"#
+    );
+    assert!(load_str(&wrap_controls(&ok_model)).is_ok());
+
+    let over_limit = format!("{}x{}", "(".repeat(257), ")".repeat(257));
+    expect_e243(
+        &format!(r#"{{"type": "expression", "name": "y", "expression": "{over_limit}"}}"#),
+        "controls[0].expression",
+    );
+}
+
+#[test]
+fn catalog_and_schema_include_version_0_8_additions() {
+    let catalog = openkeito_model::component_catalog();
+    assert_eq!(catalog.len(), 58);
+    let circuit_count = catalog.iter().filter(|c| c.category == "circuit").count();
+    let control_count = catalog.iter().filter(|c| c.category == "control").count();
+    assert_eq!(circuit_count, 26);
+    assert_eq!(control_count, 32);
+
+    let fn_pos = catalog
+        .iter()
+        .position(|c| c.type_name == "function")
+        .unwrap();
+    let expr_pos = catalog
+        .iter()
+        .position(|c| c.type_name == "expression")
+        .unwrap();
+    assert_eq!(expr_pos, fn_pos + 1);
+
+    let expr_info = &catalog[expr_pos];
+    let parsed: openkeito_model::Control =
+        serde_json::from_value(expr_info.example.clone()).unwrap();
+    if let openkeito_model::Control::Expression(e) = parsed {
+        assert!(e.compile().is_ok());
+    } else {
+        panic!("expected Expression");
+    }
+
+    let schema_val = openkeito_model::json_schema();
+    let version_desc = schema_val["properties"]["version"]["description"]
+        .as_str()
+        .unwrap();
+    assert!(version_desc.contains("0.8"), "{version_desc}");
+    assert!(version_desc.contains("expression"), "{version_desc}");
+
+    let schema = schema_val.to_string();
+    assert!(schema.contains("expression"), "schema lacks expression");
+}

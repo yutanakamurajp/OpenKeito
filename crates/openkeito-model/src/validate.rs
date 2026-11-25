@@ -383,7 +383,7 @@ fn additions(model: &Model) -> Vec<(&'static str, String)> {
 /// in the last list (and that version as `since` in its `ComponentSpec` or
 /// `ControlSpec`); a test keeps the two in step. A model that declares an
 /// older version and uses the addition then gets E102.
-const VERSION_ADDITIONS: [(&str, &[&str]); 6] = [
+const VERSION_ADDITIONS: [(&str, &[&str]); 7] = [
     (
         "0.2",
         &[
@@ -477,6 +477,7 @@ const VERSION_ADDITIONS: [(&str, &[&str]); 6] = [
             "initialization on components",
         ],
     ),
+    ("0.8", &["expression"]),
 ];
 
 /// "a", "a and b" or "a, b and c".
@@ -1706,12 +1707,12 @@ mod tests {
         for version in SUPPORTED_VERSIONS {
             assert!(validate(&model(version)).is_empty(), "version {version}");
         }
-        let d = validate(&model("0.8"));
+        let d = validate(&model("0.9"));
         assert_eq!(d.len(), 1);
         assert_eq!(d[0].code, "E101");
-        assert!(d[0].hint.contains("\"version\": \"0.7\""), "{}", d[0].hint);
+        assert!(d[0].hint.contains("\"version\": \"0.8\""), "{}", d[0].hint);
         assert!(
-            d[0].hint.contains("0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7"),
+            d[0].hint.contains("0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8"),
             "{}",
             d[0].hint
         );

@@ -168,6 +168,7 @@ mod tests {
             let is_omitted_default = |k: &str| {
                 (info.category == "circuit" && k == "initialization")
                     || (info.type_name == "pi" && k == "anti_windup")
+                    || (info.type_name == "expression" && k == "variables")
             };
             if info.category == "circuit" {
                 assert!(

@@ -37,8 +37,8 @@ The methods behind them are in [numerical-method.md](numerical-method.md).
 }
 ```
 
-The top level has `format` (`"openkeito-model"`), `version` (`"0.7"` is the current version;
-`"0.1"` to `"0.6"` are read as before), the free texts `name` and
+The top level has `format` (`"openkeito-model"`), `version` (`"0.8"` is the current version;
+`"0.1"` to `"0.7"` are read as before), the free texts `name` and
 `description`, `simulation`, `components`, `controls`, `outputs` and, for `openkeito scan`,
 `frequency_scan`. A field that the schema does not have is an error.
 
@@ -67,7 +67,7 @@ The top level has `format` (`"openkeito-model"`), `version` (`"0.7"` is the curr
 | `grid_following_converter` | averaged inverter with its phase-locked loop, current control and limits |
 
 The control blocks are listed under [Controls](#controls). `openkeito components` is the
-complete list (26 components and 31 control blocks in format version `"0.7"`).
+complete list (26 components and 32 control blocks in format version `"0.8"`).
 
 ## Results of a run
 
@@ -196,7 +196,7 @@ only, and has neither a path nor a time in it.
   branch voltage `U(<name>)`.
 - Optional diagram layout overrides use a separate sidecar JSON file (`"format": "openkeito-layout"`,
   `"version": "0.1"`, with per-face `rails` `dx` and `items` `dx`/`dy` offsets), leaving the
-  model JSON (`"0.7"`), `openkeito schema` and `openkeito topology` unchanged. Unlisted
+  model JSON (`"0.8"`), `openkeito schema` and `openkeito topology` unchanged. Unlisted
   components fall back to the deterministic automatic layout.
 
 ## Conventions
@@ -304,11 +304,11 @@ only, and has neither a path nor a time in it.
   controlled sources of [Controls](#controls); `"0.6"` adds
   `tap_changes` on `transformer`, `three_phase_transformer` and
   `three_phase_ideal_transformer`, `impedance_changes` on `coupled_rl`, and
-  `zero_sequence_inverted` on `three_phase_ideal_transformer`; `"0.7"` (the current version)
-  adds the `piecewise_linear` control block, signal-name limits on `integrator`, `lag`,
-  `pi` and `limiter`, `anti_windup` (`"conditional"` or `"state"`) on `pi`, and
-  `"initialization": "exclude"` on circuit components. Models of an older version are read
-  as before.
+  `zero_sequence_inverted` on `three_phase_ideal_transformer`; `"0.7"` adds the
+  `piecewise_linear` control block, signal-name limits on `integrator`, `lag`, `pi` and
+  `limiter`, `anti_windup` (`"conditional"` or `"state"`) on `pi`, and
+  `"initialization": "exclude"` on circuit components; `"0.8"` (the current version) adds
+  the `expression` control block. Models of an older version are read as before.
 
 ## Three-phase circuits
 
@@ -441,11 +441,12 @@ and every recorded quantity.
 ```
 
 `openkeito components` lists every block with its parameters and an example (format
-version `"0.5"` for all but the first seven, and `"0.7"` for `piecewise_linear`).
+version `"0.5"` for all but the first seven, `"0.7"` for `piecewise_linear`, and `"0.8"` for
+`expression`).
 
 | Blocks | |
 |---|---|
-| `constant`, `gain`, `sum`, `product`, `quotient`, `function`, `limiter`, `dead_band`, `comparator`, `selector`, `piecewise_linear` | without a state (direct feedthrough). `function` is sin, cos, tan, atan, atan2, abs, sqrt, exp, ln, sign, min, max or hypot (angles in radians); `selector` gives `inputs[0]` while `condition` >= 0.5, otherwise `inputs[1]`; `piecewise_linear` (`"0.7"`) takes `x` (strictly ascending finite breakpoints, at least one point) and `y` (finite values of the same length, E242 otherwise), interpolating linearly between adjacent `(x[k], y[k])` and holding `y[0]` for `input <= x[0]` and `y[last]` for `input >= x[last]` (a single-point table holds `y[0]` everywhere) |
+| `constant`, `gain`, `sum`, `product`, `quotient`, `function`, `limiter`, `dead_band`, `comparator`, `selector`, `piecewise_linear`, `expression` | without a state (direct feedthrough). `function` is sin, cos, tan, atan, atan2, abs, sqrt, exp, ln, sign, min, max or hypot (angles in radians); `selector` gives `inputs[0]` while `condition` >= 0.5, otherwise `inputs[1]`; `piecewise_linear` (`"0.7"`) takes `x` (strictly ascending finite breakpoints, at least one point) and `y` (finite values of the same length, E242 otherwise), interpolating linearly between adjacent `(x[k], y[k])` and holding `y[0]` for `input <= x[0]` and `y[last]` for `input >= x[last]` (a single-point table holds `y[0]` everywhere); `expression` (`"0.8"`) evaluates an algebraic expression string over its input signals (see below) |
 | `step`, `ramp`, `sine_wave`, `triangle_wave`, `time_series` | functions of time. `time_series` holds each value until the next time (`"interpolation": "step"`, default) or joins them by straight lines (`"linear"`) |
 | `integrator`, `lag`, `lead_lag`, `transfer_function`, `pi`, `delay`, `rate_limiter`, `initial_value` | with a state, integrated with the trapezoidal rule. `transfer_function` has `numerator` and `denominator` in descending powers of s (`[1, 2]` over `[1, 3, 2]` is (s + 2)/(s² + 3s + 2)) |
 | `abc_to_dq0`, `dq0_to_abc`, `pll` | the rotating frame and the phase-locked loop |
@@ -461,10 +462,10 @@ version `"0.5"` for all but the first seven, and `"0.7"` for `piecewise_linear`)
   depend on its input at the same instant: an `integrator`, a `lag`, a `transfer_function`
   whose numerator has a lower order than its denominator, a `delay` of at least one time
   step. Such a loop is solved at every grid point (with the trapezoidal rule for the whole
-  loop). Any other loop—including one through `piecewise_linear` or through a signal-name
-  limit on `integrator`, `lag`, `pi` or `limiter`, which depend on that signal at the same
-  instant—is an error (E171); a loop through the circuit (a measurement of what the controls
-  act on) is always possible and has one time step of delay.
+  loop). Any other loop—including one through `piecewise_linear`, `expression` or through a
+  signal-name limit on `integrator`, `lag`, `pi` or `limiter`, which depend on that signal at
+  the same instant—is an error (E171); a loop through the circuit (a measurement of what the
+  controls act on) is always possible and has one time step of delay.
 - **Limits.** An `integrator` and a `lag` with `minimum` or `maximum` hold their state
   within the limits, so that it leaves a limit as soon as the input drives it back (no
   wind-up). An `integrator` with `"wrap": true` is folded back into `[minimum, maximum)`
@@ -497,9 +498,31 @@ version `"0.5"` for all but the first seven, and `"0.7"` for `piecewise_linear`)
   delay shorter than the time step depends on the present input and cannot close a loop.
 - **Errors while running.** A `quotient` whose denominator is 0 stops the run (E251) unless
   `minimum_denominator` is given (a denominator of smaller magnitude is replaced by it, with
-  its sign); so does a `function` outside its domain or a non-finite signal limit. A loop that does not settle within
+  its sign); so does a `function` outside its domain, a non-finite result from `expression`
+  (such as division by zero, `sqrt` of a negative value, or `ln` <= 0) or a non-finite
+  signal limit. A loop that does not settle within
   100 passes stops the run with E250: reduce `time_step_s`. The summary counts the passes
   beyond the first of each grid point (`solver.control_loop_iterations`).
+- **Expression.** An `expression` block (`"0.8"`) has `name`, optional `inputs` (array of
+  signal names), optional `variables` (map from identifier to signal name, for aliases or
+  signal names containing `.` such as `"v.d"`), and `expression` (expression string).
+  - *Variables and constants:* any signal in `inputs` whose name is a valid identifier
+    (other than a built-in function name) can be referenced directly by name, and positional
+    names `u0`, `u1`, ... refer to the entries of `inputs` in order. `variables` binds
+    explicit identifiers to signal names. The built-in constants `pi` and `e` resolve to π
+    and Euler's number only when no variable of the same name is defined via `inputs` or
+    `variables` (so a signal named `"e"` takes precedence). Syntax errors, undefined
+    variables or functions, wrong argument counts and conflicting variable bindings are
+    reported as E243.
+  - *Operators and precedence (highest to lowest):* parentheses `(...)` and function calls
+    > exponentiation `^` (right-associative, and binding tighter than unary `+`/`-`, so
+    `-x^2` is `-(x^2)` and `x^-2` is `x^(-2)`) > unary `+`, `-` > `*`, `/` > `+`, `-`.
+  - *Functions (14, angles in radians):* single-argument `sin`, `cos`, `tan`, `atan`, `abs`,
+    `sqrt`, `exp`, `ln`, `sign`; two-argument `atan2(y, x)`, `hypot(x, y)`, `pow(base, exp)`;
+    variadic (one or more arguments) `min`, `max`.
+  - *Evaluation:* stateless direct feedthrough (included in the E171 loop check); evaluated
+    at every grid point and previewed at sub-step switching instants under
+    `"switching": "interpolated"`. Non-finite outputs stop the run with E251.
 - **Rotating frame.** θ is the angle of the d axis ahead of the axis of phase a, the q axis
   is 90° ahead of the d axis, and amplitudes are kept:
 
@@ -792,7 +815,7 @@ errors, with W warnings.
 | E210 | run | writing the result failed |
 | W220, W221 | run | the waveforms left the steady state (W220); a switch still waits for a current zero at the end (W221) |
 | E230, E231, W230, W231 | validation | `bergeron_line`: travel time below the time step, resistance that couples the modes or exceeds the characteristic impedance |
-| E240–E242, E244, W240 | validation | control blocks and controlled sources: names of signals, transfer functions, time series, lookup tables (`piecewise_linear`), signals that a component offers; a controlled source without `steady_state` |
+| E240–E244, W240 | validation | control blocks and controlled sources: names of signals, transfer functions, time series, lookup tables (`piecewise_linear`), `expression` blocks (E243: syntax errors, undefined variables or functions, wrong argument counts, variable conflicts), signals that a component offers (E244); a controlled source without `steady_state` (W240) |
 | E250, E251 | run | a loop of control blocks did not settle; a control signal is not finite |
 | E260–E264, W260, W261 | validation, run | nonlinear characteristics and saturation |
 | W270, W271 | run | more switching instants within a step than are placed; default diode resistances that block more than one device does |

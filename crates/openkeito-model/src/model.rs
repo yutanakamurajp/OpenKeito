@@ -8,10 +8,10 @@ pub use crate::controls::*;
 pub const FORMAT: &str = "openkeito-model";
 /// Current value of the `version` field. What a model of this version may
 /// use beyond the previous one is listed in `VERSION_ADDITIONS` (validation).
-pub const VERSION: &str = "0.7";
+pub const VERSION: &str = "0.8";
 /// Every `version` this crate reads. A model of an older version is also a
 /// valid model of every newer one.
-pub const SUPPORTED_VERSIONS: [&str; 7] = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7"];
+pub const SUPPORTED_VERSIONS: [&str; 8] = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8"];
 /// Name of the reference node (0 V).
 pub const GROUND: &str = "gnd";
 
@@ -21,7 +21,8 @@ pub const GROUND: &str = "gnd";
 pub struct Model {
     /// Must be "openkeito-model".
     pub format: String,
-    /// Format version: "0.7"; "0.6" for a model without the additions of
+    /// Format version: "0.8"; "0.7" for a model without the additions of
+    /// 0.8 (expression); "0.6" for a model without the additions of
     /// 0.7 (piecewise_linear, signal limits on lag, pi, integrator and
     /// limiter, pi.anti_windup, initialization on components);
     /// "0.5" for a model without those of 0.6 (zero_sequence_inverted,

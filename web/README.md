@@ -161,7 +161,7 @@ Checked in Chromium 150 on Windows 11.
     drawn, with one line for all the components between two of them; the tab says so.
 - **Model.** Switch between `JSON` (a text area with line numbers) and `Form` mode (backed by
   the same JSON text as the single source of truth). `Form` mode builds structured parameter
-  forms from the 57-type catalog and JSON Schema (with units, descriptions, sign
+  forms from the 58-type catalog and JSON Schema (with units, descriptions, sign
   conventions, and `<datalist>` candidates for nodes, buses, and signals), lets you add or
   remove components, controls, and outputs, keeps Undo/Redo history, and shows `validate`
   diagnostics inline beside the matching field. 300 ms after the last edit the text goes to
@@ -252,10 +252,10 @@ database line by line.
 | `fault` | flash with an arrowhead | IEC (flashover) |
 | `nonlinear_resistor`, `nonlinear_inductor` | resistor, or inductor with a core, crossed by the line of a non-linear characteristic | IEC |
 | earth | a lead to three bars | IEC |
-| control blocks (31) | rectangle with a mark: `Σ`, `∫`, `K`, `PI`, `1/(1+sT)`, `G(s)`, `×`, `÷`, `f(u)`, `PLL`, `abc/dq0`, a small curve for a limiter, a dead band, a step, a ramp, a sine, a triangle wave, a time series, a piecewise linear curve | |
+| control blocks (32) | rectangle with a mark: `Σ`, `∫`, `K`, `PI`, `1/(1+sT)`, `G(s)`, `×`, `÷`, `f(u)`, `PLL`, `abc/dq0`, a small curve for a limiter, a dead band, a step, a ramp, a sine, a triangle wave, a time series, a piecewise linear curve | |
 
 Every type of `openkeito components` has an entry in `CIRCUIT` or `CONTROL` of
-`src/symbols.js` (26 and 31). A type without one is drawn as a dashed box with its name;
+`src/symbols.js` (26 and 32). A type without one is drawn as a dashed box with its name;
 the tests and `build.mjs` fail while there is one, so a new component gets its symbol with
 it.
 
@@ -400,7 +400,7 @@ configuration, build image, headers, serving, limits; Wrangler: `pages`; compres
 of this has been run: deploying is done by the maintainer.
 
 What the page needs from a host is little: static files, `text/javascript` for `.js`, ideally
-`application/wasm` for `.wasm`. `web/dist` is 48 files and 3.98 MB (21 examples; limits of
+`application/wasm` for `.wasm`. `web/dist` is 50 files and 4.27 MB (23 examples; limits of
 Pages: 20 000 files, 25 MiB per file).
 
 ### Direct upload (recommended)
@@ -450,7 +450,7 @@ compiled files can be cached, is the recommendation.
 - **Compression.** Cloudflare compresses responses itself (Gzip, Brotli or Zstandard, by what
   the browser accepts), and `application/wasm`, JavaScript, JSON, CSS and HTML are among the
   types it compresses. Do not upload compressed files and do not set `Content-Encoding`. The
-  module is 3.53 MB and 0.88 MB compressed.
+  module is 3.78 MB and 0.94 MB compressed.
 - **Caching.** Leave it to Pages: it sends an `ETag` and revalidates, and a new deploy is
   visible at once. The file names carry no hash, so a long `max-age` would be wrong.
 - **`_headers`** is not required. The one in `web/` (copied into `web/dist`) adds a content

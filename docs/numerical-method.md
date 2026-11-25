@@ -457,7 +457,10 @@ t = 0, which writes a set point as "what the quantity is now".
 
 The `piecewise_linear` block (`"0.7"`) has no state (direct feedthrough) and interpolates
 linearly between adjacent breakpoints `(x[k], y[k])`, holding `y[0]` for `u <= x[0]` and
-`y[last]` for `u >= x[last]` (a single-point table holds `y[0]` everywhere). The `delay` keeps its input at the last ⌊d/h⌋ + 1 grid points and joins the two around t − d
+`y[last]` for `u >= x[last]` (a single-point table holds `y[0]` everywhere). The
+`expression` block (`"0.8"`) also has no state (direct feedthrough): its expression string is
+parsed and compiled once before the run and evaluated at each grid point on its inputs,
+stopping with E251 if the result is not finite. The `delay` keeps its input at the last ⌊d/h⌋ + 1 grid points and joins the two around t − d
 by a straight line: for d = (k + r) h the error is at most r (1 − r)/2 · h² |u″| (the chord
 of the input), and none for a whole number of steps. A delay shorter than the step
 interpolates between the previous and the present input, so its output depends on the
@@ -470,7 +473,7 @@ A loop of blocks is allowed when it passes through an input on which the output 
 depend at the same instant: the input of an integrator, of a lag, of a transfer function
 whose numerator has a lower order than its denominator, of a delay of at least one step. A
 loop of blocks that all depend on their present input—including a loop passing through
-`piecewise_linear` or through a signal-name limit on `integrator`, `lag`, `pi` or `limiter`—has no order
+`piecewise_linear`, `expression` or through a signal-name limit on `integrator`, `lag`, `pi` or `limiter`—has no order
 of evaluation and is rejected (E171).
 
 The blocks are grouped into strongly connected components [Tarjan], which are evaluated in
@@ -493,7 +496,8 @@ A block computes its new state from the state of the last grid point and keeps i
 while the loop settles; the states are replaced once, after the grid point is settled.
 
 A signal that is not a finite number (a division by 0 without `minimum_denominator`, the
-square root of a negative number, or a non-finite signal limit) stops the run with E251.
+square root of a negative number, a non-finite result from `expression`, or a non-finite
+signal limit) stops the run with E251.
 
 ### Rotating frame and phase-locked loop
 
@@ -1540,9 +1544,10 @@ Where the instants come from:
   with the measured quantities and the states of the blocks held at their values of t_k:
   a block that is a known function of time (the carrier, a step, a ramp, a sine wave, a
   time series) or of its inputs alone (gain, sum, comparator, product, quotient, function,
-  limiter, dead band, selector, the transformations to and from the rotating frame) is
-  evaluated at the previewed time, every other block (those with a state, the measurements)
-  holds its output. The blocks of a loop are previewed once, in their order.
+  limiter, dead band, selector, piecewise linear, expression, the transformations to and from
+  the rotating frame) is evaluated at the previewed time, every other block (those with a
+  state, the measurements) holds its output. The blocks of a loop are previewed once, in
+  their order.
   The instant from which a `controlled_switch` would switch is found by bisection on the
   previewed time, to 2⁻⁴⁰ of a step. With a constant reference the PWM edges are the
   crossings of reference and carrier, exact to rounding; a reference that follows a

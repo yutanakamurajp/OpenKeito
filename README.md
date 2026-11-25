@@ -109,11 +109,11 @@ Exit codes: 0 success, 1 the simulation failed, 2 the model or the request is in
 `openkeito schema` and `openkeito components` are the reference for field names; read them
 instead of guessing. [docs/model.md](docs/model.md) has the conventions (signs, three-phase
 buses, phasors, when a switching action takes effect), the simulation settings and a
-section for each family of components. The current format version is `"0.7"` (set
-`"version": "0.7"` when using 0.7 additions such as `piecewise_linear` or signal-name
-limits, `"0.6"` for `tap_changes`, `impedance_changes` or `zero_sequence_inverted`, or
-`"0.5"` for `bergeron_line`, `switching`, machines and converters); models of older
-versions are read as before.
+section for each family of components. The current format version is `"0.8"` (set
+`"version": "0.8"` when using 0.8 additions such as the `expression` control block,
+`"0.7"` for `piecewise_linear` or signal-name limits, `"0.6"` for `tap_changes`,
+`impedance_changes` or `zero_sequence_inverted`, or `"0.5"` for `bergeron_line`,
+`switching`, machines and converters); models of older versions are read as before.
 
 Switching instants lie on the time grid by default (`"switching": "grid"`). **For power
 electronics, set `"switching": "interpolated"`**: every instant is then placed within its
@@ -139,6 +139,7 @@ time step, and a 10 kHz buck converter at 10 µs is more accurate than at 1 µs 
 | `rectifier.json` | diode bridge with capacitor input |
 | `arrester.json`, `saturable_reactor.json`, `transformer_inrush.json` | nonlinear elements: a surge arrester, a saturable reactor with a diode, the inrush current of a transformer |
 | `control_blocks.json`, `current_control.json`, `pll.json` | control blocks: a set point shaped by blocks, PI control of a current, a phase-locked loop |
+| `expression_control.json` | mathematical expressions (`expression` control block, format `0.8`) driving a controlled current source |
 
 ## In the browser
 

@@ -10,6 +10,7 @@
 
 mod blocks;
 mod dynamic;
+mod expression;
 mod measurement;
 mod nonlinear;
 mod time;
@@ -23,6 +24,7 @@ use serde::{Deserialize, Serialize};
 
 pub use blocks::*;
 pub use dynamic::*;
+pub use expression::*;
 pub use measurement::*;
 pub use nonlinear::*;
 pub use time::*;
@@ -252,6 +254,7 @@ control_types! {
     Product,
     Quotient,
     Function,
+    Expression,
     Selector,
     InitialValue,
     Step,
