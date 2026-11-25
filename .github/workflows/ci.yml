@@ -124,6 +124,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Configure RUSTFLAGS to remap workspace and cargo paths
+        shell: bash
         run: |
           python - <<'PY'
           import os, pathlib
