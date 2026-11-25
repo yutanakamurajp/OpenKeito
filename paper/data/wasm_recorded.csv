@@ -1,0 +1,9 @@
+# docs/performance.md, 'WebAssembly (M5)': time per step in microseconds without the output, minimum of 15 runs,
+# openkeito-wasm under Node 24 against the native build on the same core. Recorded 2026-11-22.
+example,unknowns,native_us_per_step,wasm_us_per_step
+rlc,4,0.107,0.160
+buck_pi,4,0.183,0.276
+rectifier,4,0.205,0.304
+machine_avr_governor,9,1.056,1.318
+line_areas,25,1.058,1.511
+three_phase_fault,29,0.888,1.609

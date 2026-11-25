@@ -1,0 +1,5 @@
+[env]
+# Build the Python module as an extension (not linked to libpython) in every
+# cargo command, so that cargo test and clippy of the workspace need no Python
+# development files. maturin sets the same.
+PYO3_BUILD_EXTENSION_MODULE = "1"

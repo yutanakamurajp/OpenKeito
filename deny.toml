@@ -1,0 +1,38 @@
+# cargo-deny configuration. Run before a dependency changes (the job `licenses` of
+# .github/workflows/ci.yml runs the same check):
+#
+#   cargo install cargo-deny --locked
+#   cargo deny check licenses sources bans
+#
+# OpenKeito is MIT OR Apache-2.0. Every dependency must carry a permissive
+# license that both allow. A new license identifier fails the check, so that
+# someone looks at it before it is added to the list.
+
+[graph]
+all-features = true
+
+[licenses]
+confidence-threshold = 0.93
+allow = [
+    "MIT",
+    "Apache-2.0",
+    # target-lexicon (build dependency of pyo3)
+    "Apache-2.0 WITH LLVM-exception",
+    # numpy (the Rust bindings; openkeito-py only)
+    "BSD-2-Clause",
+    # unicode-ident: "(MIT OR Apache-2.0) AND Unicode-3.0", for its tables
+    "Unicode-3.0",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# A dependency without a version is refused, as crates.io refuses it: the
+# crates of the workspace have their version in [workspace.dependencies] of
+# Cargo.toml. Crates that are not published (openkeito-py, openkeito-wasm) may
+# depend by path alone.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

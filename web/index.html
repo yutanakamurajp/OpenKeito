@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>OpenKeito in the browser</title>
+  <meta name="description" content="OpenKeito, an open simulator of electromagnetic transients in power systems, running in the browser as WebAssembly: run the examples, edit the model, read the diagnostics, scan impedances over frequency.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="src/main.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#results">Skip to the results</a>
+
+  <header class="page-header">
+    <div class="intro">
+      <h1>OpenKeito <span class="h1-sub">in the browser</span></h1>
+      <p>
+        OpenKeito is an open simulator of electromagnetic transients (EMT) in power systems.
+        This page runs its solver in your browser as WebAssembly: choose an example or edit the
+        model, and run it. Nothing is sent to a server.
+      </p>
+    </div>
+    <div class="header-side">
+      <dl class="facts">
+        <div><dt>Version</dt><dd id="version">loading…</dd></div>
+        <div><dt>Threads</dt><dd>1 (single-threaded WebAssembly)</dd></div>
+        <div id="source-fact" hidden><dt>Source</dt><dd><a id="source-link" rel="noopener">repository</a></dd></div>
+      </dl>
+      <button type="button" id="theme" class="quiet-button" aria-label="Color scheme">Theme: auto</button>
+    </div>
+  </header>
+
+  <noscript><p class="banner error">This page needs JavaScript and WebAssembly to run the solver.</p></noscript>
+  <p id="load-error" class="banner error" role="alert" hidden></p>
+
+  <main>
+    <section class="pane" id="model" aria-labelledby="model-title">
+      <h2 id="model-title">Model</h2>
+
+      <div class="field">
+        <label for="example">Example</label>
+        <select id="example"></select>
+      </div>
+      <p id="example-description" class="description"></p>
+
+      <div class="actions">
+        <button type="button" id="run" class="primary" disabled>Run</button>
+        <button type="button" id="scan" disabled>Frequency scan</button>
+        <button type="button" id="stop" disabled>Stop</button>
+        <button type="button" id="reset" class="quiet-button" disabled>Undo my edits</button>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite">Loading the solver…</p>
+
+      <div class="model-mode-bar" role="group" aria-label="Model editor mode">
+        <button type="button" id="mode-json" class="quiet-button" aria-pressed="true">JSON</button>
+        <button type="button" id="mode-form" class="quiet-button" aria-pressed="false">Form</button>
+      </div>
+
+      <div class="editor" id="editor-box">
+        <div class="gutter" id="gutter" aria-hidden="true"></div>
+        <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off"
+          aria-label="Model as JSON" aria-describedby="editor-hint"></textarea>
+      </div>
+      <div id="inspector-panel" class="inspector-panel" hidden></div>
+      <p id="editor-hint" class="hint">
+        The model is checked as you type. Ctrl+Enter (⌘+Enter) runs it. Try a mistake: misspell a
+        field, make a resistance negative, or name a node that does not exist.
+      </p>
+
+      <section id="diagnostics" class="diagnostics" aria-labelledby="diagnostics-title">
+        <h3 id="diagnostics-title">Diagnostics</h3>
+        <p id="diagnostics-summary" class="diagnostics-summary" role="status" aria-live="polite"></p>
+        <ul id="diagnostics-list" class="diagnostic-list"></ul>
+      </section>
+    </section>
+
+    <section class="pane" id="results" aria-labelledby="results-title" tabindex="-1">
+      <h2 id="results-title">Diagram and results</h2>
+      <div class="tabs" role="tablist" aria-label="Diagram and results">
+        <button type="button" role="tab" id="tab-diagram" aria-controls="panel-diagram" aria-selected="true">Diagram</button>
+        <button type="button" role="tab" id="tab-waveforms" aria-controls="panel-waveforms" aria-selected="false" tabindex="-1">Waveforms</button>
+        <button type="button" role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" tabindex="-1">Frequency scan</button>
+        <button type="button" role="tab" id="tab-summary" aria-controls="panel-summary" aria-selected="false" tabindex="-1">Summary</button>
+        <button type="button" role="tab" id="tab-events" aria-controls="panel-events" aria-selected="false" tabindex="-1">Events <span id="event-count" class="count"></span></button>
+        <button type="button" role="tab" id="tab-batch" aria-controls="panel-batch" aria-selected="false" tabindex="-1">Batch</button>
+      </div>
+      <p id="stale" class="note" hidden>The model was edited after these results were computed. Run it again to update them.</p>
+
+      <div role="tabpanel" id="panel-diagram" aria-labelledby="tab-diagram" tabindex="0">
+        <div id="diagram"></div>
+        <details class="hint about-diagram">
+          <summary>About the diagram</summary>
+          Drawn from the model as you type; positions are not stored. Press a component to select
+          it in the model, or put the cursor into a component in the model to find it here. A bus
+          is a bar, with one line for the three phases; a link such as “← pwm” leads to the control
+          blocks and back. Errors and warnings are marked with ! at what they are about.
+          After a run, the diagram shows what the model records at the time of the cursor of the
+          waveforms, and whether a switch, a diode or a fault conducts there; a press on a
+          component also switches its columns on in the waveforms.
+        </details>
+        <label class="split-toggle" id="split-box" hidden>
+          <input type="checkbox" id="split" checked> Show the waveforms below the diagram
+        </label>
+      </div>
+
+      <div role="tabpanel" id="panel-waveforms" aria-labelledby="tab-waveforms" tabindex="0" hidden>
+        <p id="waveforms-empty" class="empty">Run a model to see its waveforms.</p>
+        <div id="waveforms-chart" hidden></div>
+        <p id="waveforms-note" class="hint" hidden></p>
+      </div>
+
+      <div role="tabpanel" id="panel-scan" aria-labelledby="tab-scan" tabindex="0" hidden>
+        <p id="scan-empty" class="empty">
+          A frequency scan computes the impedances seen from the nodes and buses that the model
+          lists under <code>frequency_scan</code>, with all sources set to zero. Choose an example
+          that has one (the fault behind a transformer, the line energization) and press
+          “Frequency scan”.
+        </p>
+        <div id="scan-chart" hidden></div>
+        <div id="scan-info"></div>
+      </div>
+
+      <div role="tabpanel" id="panel-summary" aria-labelledby="tab-summary" tabindex="0" hidden>
+        <p id="summary-empty" class="empty">Run a model to see its summary: status, warnings, solver counts and computing time.</p>
+        <div id="summary-content"></div>
+      </div>
+
+      <div role="tabpanel" id="panel-events" aria-labelledby="tab-events" tabindex="0" hidden>
+        <p id="events-empty" class="empty">Run a model to see its switching events.</p>
+        <div id="events-content"></div>
+      </div>
+
+      <div role="tabpanel" id="panel-batch" aria-labelledby="tab-batch" tabindex="0" hidden>
+        <div id="batch-view"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="page-footer">
+    <p>
+      OpenKeito is free software under the MIT or the Apache-2.0 license, at your choice.
+      The module in this page is the same code as the command <code>openkeito</code>, built for
+      WebAssembly; it runs on one thread, so large networks take longer here than natively.
+      <span id="footer-source" hidden>Source: <a id="footer-source-link" rel="noopener"></a>.</span>
+    </p>
+  </footer>
+</body>
+</html>

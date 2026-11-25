@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Marks the files of web/ as ES modules for Node (the tests and build.mjs). The page has no dependencies and no build step."
+}

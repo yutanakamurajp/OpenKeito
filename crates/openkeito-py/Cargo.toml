@@ -1,0 +1,29 @@
+[package]
+name = "openkeito-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+description = "Python bindings of OpenKeito (the native module openkeito._native)"
+publish = false
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+openkeito-cli = { workspace = true, features = ["native"] }
+openkeito-model.workspace = true
+serde_json.workspace = true
+# abi3: one wheel for Python 3.10 and later. generate-import-lib: no Python
+# development files needed to link on Windows.
+pyo3 = { version = "0.30", features = ["abi3-py310", "generate-import-lib"] }
+numpy = "0.30"
+
+[build-dependencies]
+pyo3-build-config = "0.30"

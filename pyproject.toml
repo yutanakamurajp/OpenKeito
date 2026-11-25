@@ -1,0 +1,66 @@
+[build-system]
+requires = ["maturin>=1.16,<2"]
+build-backend = "maturin"
+
+[project]
+name = "openkeito"
+description = "Open electromagnetic transient (EMT) simulator for power systems, driven by people and AI agents"
+# The description on a package index: a short text without links into the
+# repository (the links of README.md are relative and would not resolve there).
+readme = "crates/openkeito-py/README.md"
+requires-python = ">=3.10"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
+authors = [{ name = "The OpenKeito contributors" }]
+keywords = ["power systems", "electromagnetic transients", "EMT", "simulation", "pandapower", "CGMES", "MCP"]
+dynamic = ["version"]
+dependencies = ["numpy>=1.24"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.urls]
+Repository = "https://github.com/yutanakamurajp/OpenKeito"
+Documentation = "https://github.com/yutanakamurajp/OpenKeito/blob/main/README.md"
+Changelog = "https://github.com/yutanakamurajp/OpenKeito/blob/main/CHANGELOG.md"
+Issues = "https://github.com/yutanakamurajp/OpenKeito/issues"
+
+[project.optional-dependencies]
+pandas = ["pandas>=2"]
+pandapower = ["pandapower>=3.0"]
+powsybl = ["pypowsybl>=1.10"]
+mcp = ["mcp>=2"]
+test = ["pytest>=8"]
+lint = ["pyflakes>=3"]
+# Figures and tables of paper/ (python paper/make.py).
+paper = ["matplotlib>=3.8"]
+
+[project.scripts]
+openkeito-mcp = "openkeito.mcp_server:main"
+
+[tool.maturin]
+manifest-path = "crates/openkeito-py/Cargo.toml"
+python-source = "python"
+module-name = "openkeito._native"
+# The source distribution holds what the build needs: the crates behind the
+# Python module and the Python sources. The tests, the examples, the browser
+# page, the paper material and the documents stay in the repository.
+exclude = [
+    "python/tests/**",
+    "crates/*/tests/**",
+    "**/__pycache__/**",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["python/tests"]
+# pandapower's own deprecation notes about its bundled MATPOWER cases.
+filterwarnings = ["ignore::DeprecationWarning:pandapower.*"]

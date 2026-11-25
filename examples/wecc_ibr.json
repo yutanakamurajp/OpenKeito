@@ -1,0 +1,238 @@
+{
+  "format": "openkeito-model",
+  "version": "0.7",
+  "name": "WECC generic IBR (REGCA1 / REECA1 / REPCA1)",
+  "description": "A 10 MVA, 6.6 kV inverter-based resource (IBR) connected to a stiff 50 Hz grid through a step-up impedance, modeled with standard WECC generic renewable energy system controls: REPCA1 (plant active/reactive power and frequency droop control), REECA1 (electrical control with VDL1/VDL2 piecewise-linear current limits, reactive-power PI with dynamic limits, and Q-priority active current limit), and REGCA1 (generator/converter interface with LVPL/LVACM piecewise-linear logic and 20 ms current lag). A balanced three-phase fault at 0.2 s dips the terminal voltage to ~0.5 pu for 100 ms, triggering reactive current support and active current limiting before recovering to the pre-fault steady state.",
+  "simulation": {
+    "time_step_s": 5e-5,
+    "end_time_s": 0.5,
+    "initialization": "steady_state"
+  },
+  "components": [
+    {
+      "type": "three_phase_source",
+      "name": "G1",
+      "bus": "b_grid",
+      "line_voltage_rms_v": 6600.0,
+      "frequency_hz": 50.0,
+      "impedance": {
+        "type": "sequence",
+        "r1_ohm": 0.05,
+        "l1_h": 0.001,
+        "r0_ohm": 0.15,
+        "l0_h": 0.003
+      }
+    },
+    {
+      "type": "coupled_rl",
+      "name": "Z1",
+      "buses": ["b_grid", "b_ibr"],
+      "impedance": {
+        "type": "sequence",
+        "r1_ohm": 0.04,
+        "l1_h": 0.0014,
+        "r0_ohm": 0.12,
+        "l0_h": 0.0042
+      }
+    },
+    {
+      "type": "three_phase_load",
+      "name": "LD1",
+      "bus": "b_ibr",
+      "rated_voltage_kv": 6.6,
+      "rated_frequency_hz": 50.0,
+      "active_power_mw": 2.0,
+      "reactive_power_mvar": 0.5
+    },
+    {
+      "type": "three_phase_controlled_current_source",
+      "name": "IBR1",
+      "bus": "b_ibr",
+      "signals": ["i_ref.a", "i_ref.b", "i_ref.c"],
+      "steady_state": {
+        "current_rms_a": 700.0,
+        "angle_deg": 2.0
+      }
+    },
+    {
+      "type": "fault",
+      "name": "F1",
+      "bus": "b_ibr",
+      "phases": ["a", "b", "c"],
+      "ground": true,
+      "fault_resistance_ohm": 0.5,
+      "start_time_s": 0.2,
+      "clear_time_s": 0.3
+    }
+  ],
+  "controls": [
+    {"type": "three_phase_measurement", "name": "v", "quantity": {"type": "bus_voltage", "bus": "b_ibr"}},
+    {"type": "three_phase_measurement", "name": "i", "quantity": {"type": "branch_current", "component": "IBR1"}},
+    {
+      "type": "pll",
+      "name": "pll",
+      "inputs": ["v.a", "v.b", "v.c"],
+      "nominal_frequency_hz": 50.0,
+      "rated_amplitude": 5388.877434122991,
+      "proportional_gain": 175.93,
+      "integral_gain_per_s": 15791.4
+    },
+    {"type": "abc_to_dq0", "name": "v_dq", "inputs": ["v.a", "v.b", "v.c"], "angle": "pll.theta"},
+    {"type": "abc_to_dq0", "name": "i_dq", "inputs": ["i.a", "i.b", "i.c"], "angle": "pll.theta"},
+
+    {"type": "gain", "name": "vd_pu", "input": "v_dq.d", "gain": 0.00018556740118987895},
+    {"type": "gain", "name": "vq_pu", "input": "v_dq.q", "gain": 0.00018556740118987895},
+    {"type": "gain", "name": "id_pu", "input": "i_dq.d", "gain": 0.0008083316210772748},
+    {"type": "gain", "name": "iq_pu_dq", "input": "i_dq.q", "gain": 0.0008083316210772748},
+    {"type": "gain", "name": "iq_meas", "input": "iq_pu_dq", "gain": -1.0},
+    {"type": "function", "name": "vt_pu", "function": "hypot", "inputs": ["vd_pu", "vq_pu"]},
+
+    {"type": "product", "name": "p_d", "inputs": ["vd_pu", "id_pu"]},
+    {"type": "product", "name": "p_q", "inputs": ["vq_pu", "iq_pu_dq"]},
+    {"type": "sum", "name": "p_pu", "inputs": ["p_d", "p_q"], "signs": [1.0, 1.0]},
+    {"type": "product", "name": "q_1", "inputs": ["vq_pu", "id_pu"]},
+    {"type": "product", "name": "q_2", "inputs": ["vd_pu", "iq_pu_dq"]},
+    {"type": "sum", "name": "q_pu", "inputs": ["q_1", "q_2"], "signs": [1.0, -1.0]},
+
+    {"type": "lag", "name": "p_filt", "input": "p_pu", "time_constant_s": 0.02},
+    {"type": "lag", "name": "q_filt", "input": "q_pu", "time_constant_s": 0.02},
+    {"type": "initial_value", "name": "p_ref_plant", "input": "p_pu"},
+    {"type": "initial_value", "name": "q_ref_plant", "input": "q_pu"},
+
+    {"type": "constant", "name": "f_nom", "value": 50.0},
+    {"type": "sum", "name": "f_err_hz", "inputs": ["f_nom", "pll.frequency_hz"], "signs": [1.0, -1.0]},
+    {"type": "gain", "name": "f_err_pu", "input": "f_err_hz", "gain": 0.02},
+    {"type": "dead_band", "name": "f_db", "input": "f_err_pu", "lower": -0.00072, "upper": 0.00072},
+    {"type": "gain", "name": "f_droop", "input": "f_db", "gain": 20.0},
+    {"type": "sum", "name": "p_err_plant", "inputs": ["p_ref_plant", "f_droop", "p_filt"], "signs": [1.0, 1.0, -1.0]},
+    {"type": "dead_band", "name": "p_err_db", "input": "p_err_plant", "lower": -0.001, "upper": 0.001},
+    {
+      "type": "pi",
+      "name": "p_ext",
+      "input": "p_err_db",
+      "proportional_gain": 0.5,
+      "integral_gain_per_s": 0.5,
+      "initial_integral": "p_pu",
+      "output_min": 0.0,
+      "output_max": 1.0
+    },
+
+    {"type": "sum", "name": "q_err_plant", "inputs": ["q_ref_plant", "q_filt"], "signs": [1.0, -1.0]},
+    {"type": "dead_band", "name": "q_err_db", "input": "q_err_plant", "lower": -0.005, "upper": 0.005},
+    {
+      "type": "pi",
+      "name": "q_ext",
+      "input": "q_err_db",
+      "proportional_gain": 0.5,
+      "integral_gain_per_s": 5.0,
+      "initial_integral": "q_pu",
+      "output_min": -0.44,
+      "output_max": 0.44
+    },
+
+    {"type": "lag", "name": "v_filt", "input": "vt_pu", "time_constant_s": 0.02},
+    {
+      "type": "piecewise_linear",
+      "name": "vdl1_iq_max",
+      "input": "v_filt",
+      "x": [0.0, 0.4, 0.85, 1.0, 1.2],
+      "y": [1.1, 1.1, 0.9, 0.75, 0.75]
+    },
+    {
+      "type": "piecewise_linear",
+      "name": "vdl2_ip_max",
+      "input": "v_filt",
+      "x": [0.0, 0.4, 0.85, 1.0, 1.2],
+      "y": [0.2, 0.4, 1.0, 1.1, 1.1]
+    },
+    {"type": "gain", "name": "iq_min_neg", "input": "vdl1_iq_max", "gain": -1.0},
+    {"type": "limiter", "name": "q_ord", "input": "q_ext", "minimum": -0.44, "maximum": 0.44},
+    {"type": "sum", "name": "q_err_reec", "inputs": ["q_ord", "q_filt"], "signs": [1.0, -1.0]},
+    {
+      "type": "pi",
+      "name": "iq_pi",
+      "input": "q_err_reec",
+      "proportional_gain": 0.5,
+      "integral_gain_per_s": 10.0,
+      "initial_integral": "iq_meas",
+      "output_min": "iq_min_neg",
+      "output_max": "vdl1_iq_max"
+    },
+
+    {"type": "initial_value", "name": "v_ref_reec", "input": "v_filt"},
+    {"type": "sum", "name": "v_err_reec", "inputs": ["v_ref_reec", "v_filt"], "signs": [1.0, -1.0]},
+    {"type": "dead_band", "name": "v_db_reec", "input": "v_err_reec", "lower": -0.05, "upper": 0.05},
+    {"type": "gain", "name": "iq_v", "input": "v_db_reec", "gain": 2.0},
+    {"type": "sum", "name": "iq_sum", "inputs": ["iq_pi", "iq_v"], "signs": [1.0, 1.0]},
+    {
+      "type": "limiter",
+      "name": "iq_cmd",
+      "input": "iq_sum",
+      "minimum": "iq_min_neg",
+      "maximum": "vdl1_iq_max"
+    },
+
+    {"type": "constant", "name": "imax_sq", "value": 1.21},
+    {"type": "product", "name": "iq_sq", "inputs": ["iq_cmd", "iq_cmd"]},
+    {"type": "sum", "name": "rem_sq", "inputs": ["imax_sq", "iq_sq"], "signs": [1.0, -1.0]},
+    {"type": "limiter", "name": "rem_sq_pos", "input": "rem_sq", "minimum": 0.0},
+    {"type": "function", "name": "ip_lim_q", "function": "sqrt", "inputs": ["rem_sq_pos"]},
+    {"type": "function", "name": "ip_lim", "function": "min", "inputs": ["ip_lim_q", "vdl2_ip_max"]},
+
+    {"type": "limiter", "name": "v_floor", "input": "v_filt", "minimum": 0.2},
+    {"type": "quotient", "name": "ip_ref", "inputs": ["p_ext", "v_floor"], "minimum_denominator": 0.1},
+    {
+      "type": "lag",
+      "name": "ip_ord",
+      "input": "ip_ref",
+      "time_constant_s": 0.02,
+      "minimum": 0.0,
+      "maximum": "ip_lim"
+    },
+
+    {
+      "type": "piecewise_linear",
+      "name": "lvpl_max",
+      "input": "v_filt",
+      "x": [0.0, 0.5, 0.9, 1.2],
+      "y": [0.0, 0.5, 1.1, 1.1]
+    },
+    {
+      "type": "limiter",
+      "name": "ip_lvpl",
+      "input": "ip_ord",
+      "minimum": 0.0,
+      "maximum": "lvpl_max"
+    },
+    {
+      "type": "piecewise_linear",
+      "name": "lvacm_gain",
+      "input": "vt_pu",
+      "x": [0.0, 0.4, 0.8, 1.2],
+      "y": [0.0, 0.5, 1.0, 1.0]
+    },
+    {"type": "product", "name": "ip_lvacm", "inputs": ["ip_lvpl", "lvacm_gain"]},
+
+    {"type": "lag", "name": "ip_gen", "input": "ip_lvacm", "time_constant_s": 0.02},
+    {"type": "lag", "name": "iq_gen", "input": "iq_cmd", "time_constant_s": 0.02},
+
+    {"type": "gain", "name": "id_amp", "input": "ip_gen", "gain": 1237.1160257925617},
+    {"type": "gain", "name": "iq_amp", "input": "iq_gen", "gain": -1237.1160257925617},
+    {"type": "constant", "name": "one_step", "value": 0.015707963267948967},
+    {"type": "sum", "name": "theta_next", "inputs": ["pll.theta", "one_step"], "signs": [1.0, 1.0]},
+    {"type": "dq0_to_abc", "name": "i_ref", "d": "id_amp", "q": "iq_amp", "angle": "theta_next"}
+  ],
+  "outputs": [
+    {"type": "bus_voltage", "bus": "b_ibr"},
+    {"type": "branch_current", "component": "IBR1"},
+    {"type": "signal", "signal": "vt_pu"},
+    {"type": "signal", "signal": "p_pu"},
+    {"type": "signal", "signal": "q_pu"},
+    {"type": "signal", "signal": "ip_gen"},
+    {"type": "signal", "signal": "iq_gen"},
+    {"type": "signal", "signal": "ip_lim"},
+    {"type": "signal", "signal": "vdl1_iq_max"},
+    {"type": "signal", "signal": "lvpl_max"},
+    {"type": "signal", "signal": "pll.frequency_hz"}
+  ]
+}

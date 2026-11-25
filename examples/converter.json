@@ -1,0 +1,32 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "averaged grid-following converter: a step of the active power",
+  "description": "A 2 MVA converter (the averaged model of an inverter, with its default reactor, phase-locked loop and current control) at a 6.6 kV bus with a load, behind a grid impedance (short-circuit ratio 11). The run starts from the steady state of a power flow: operating_point holds the powers of the converter and the voltage and angle of its bus, and the converter injects that current in the phasor solution. Its active power reference is the signal p_cmd, which steps from 1.0 to 1.6 MW at 0.1 s; the current follows with the time constant of the current control (1 ms) and the voltage of the bus rises. The signals of the converter are named PV1.<...>, in per unit of its ratings. summary.json reports the departure from the steady state after the step (W220), which is what this run is about.",
+  "simulation": {
+    "time_step_s": 5e-05,
+    "end_time_s": 0.3,
+    "initialization": "steady_state"
+  },
+  "components": [
+    {"type": "three_phase_source", "name": "G1", "bus": "b0", "line_voltage_rms_v": 6600.0, "frequency_hz": 50.0},
+    {"type": "coupled_rl", "name": "Z1", "buses": ["b0", "b1"], "impedance": {"type": "sequence", "r1_ohm": 0.2, "l1_h": 0.006, "r0_ohm": 0.6000000000000001, "l0_h": 0.018000000000000002}},
+    {"type": "three_phase_load", "name": "LD1", "bus": "b1", "rated_voltage_kv": 6.6, "rated_frequency_hz": 50.0, "active_power_mw": 1.0, "reactive_power_mvar": 0.3},
+    {"type": "grid_following_converter", "name": "PV1", "bus": "b1", "rated_power_mva": 2.0, "rated_voltage_kv": 6.6, "rated_frequency_hz": 50.0, "reference": {"type": "power", "active_power_mw": "p_cmd", "reactive_power_mvar": 0.0}, "operating_point": {"active_power_mw": 1.0, "reactive_power_mvar": 0.0, "voltage_kv": 6.516163, "angle_deg": 0.14131}}
+  ],
+  "controls": [
+    {"type": "step", "name": "p_cmd", "time_s": 0.1, "before": 1.0, "after": 1.6}
+  ],
+  "outputs": [
+    {"type": "bus_voltage", "bus": "b1"},
+    {"type": "branch_current", "component": "PV1"},
+    {"type": "signal", "signal": "p_cmd"},
+    {"type": "signal", "signal": "PV1.p"},
+    {"type": "signal", "signal": "PV1.q"},
+    {"type": "signal", "signal": "PV1.v_d"},
+    {"type": "signal", "signal": "PV1.i_d"},
+    {"type": "signal", "signal": "PV1.i_q"},
+    {"type": "signal", "signal": "PV1.i_ref.d"},
+    {"type": "signal", "signal": "PV1.pll.frequency_hz"}
+  ]
+}

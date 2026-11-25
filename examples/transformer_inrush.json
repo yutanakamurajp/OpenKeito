@@ -1,0 +1,24 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "inrush current of a saturable transformer",
+  "description": "A 1 MVA, 10 kV / 1 kV single-phase transformer with an open secondary is switched onto its rated voltage at a voltage zero. The flux linkage rises towards twice its rated peak, the core saturates above 1.2 pu (air-core reactance 0.4 pu) and the first current peak is 1.85 pu of the rated peak current (261 A); the source resistance of 0.5 ohm lets the peaks decay slowly.",
+  "simulation": {
+    "time_step_s": 5e-5,
+    "end_time_s": 0.1,
+    "method": "2s-dirk"
+  },
+  "components": [
+    {"type": "voltage_source", "name": "E1", "nodes": ["n0", "gnd"], "waveform": {"type": "sine", "amplitude": 14142.13562373095, "frequency_hz": 50.0}},
+    {"type": "resistor", "name": "RS", "nodes": ["n0", "p1"], "resistance_ohm": 0.5},
+    {"type": "transformer", "name": "T1", "windings": [["p1", "gnd"], ["s1", "gnd"]],
+     "rated_voltage_kv": [10.0, 1.0], "rated_power_mva": 1.0, "rated_frequency_hz": 50.0,
+     "impedance_percent": 6.0, "no_load_current_percent": 0.5,
+     "saturation": {"current_pu": [0.006, 0.756], "flux_pu": [1.2, 1.5]}}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "p1"},
+    {"type": "node_voltage", "node": "s1"},
+    {"type": "branch_current", "component": "T1"}
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "Three areas joined by two travelling-wave lines",
+  "description": "Two 66 kV sources (areas A and C, each with a load) feed a load bus (area B) over a 60 km and an 80 km bergeron_line. A three-phase fault to ground on the load bus starts at 40 ms and is cleared at the current zeros after 80 ms. The lines have no matrix entry between their ends, so the circuit is three parts with a matrix each (`solver.parts` in the summary), and the fault factorizes the matrix of area B only. The circuit is small, so \"partitioning\": \"every_line\" is written here: the default \"auto\" would keep parts of this size together. \"threads\": 2 lets two threads solve the parts; the solver uses one for a circuit this small (`solver.threads`), and the rows are the same on any number of threads. With \"partitioning\": \"off\" the result agrees to rounding.",
+  "simulation": {
+    "time_step_s": 2e-5,
+    "end_time_s": 0.1,
+    "initialization": "steady_state",
+    "partitioning": "every_line",
+    "threads": 2
+  },
+  "components": [
+    {"type": "three_phase_source", "name": "GA", "bus": "a1", "line_voltage_rms_v": 66000.0, "frequency_hz": 50.0,
+     "impedance": {"type": "sequence", "r1_ohm": 0.5, "l1_h": 0.015915, "r0_ohm": 1.0, "l0_h": 0.047746}},
+    {"type": "three_phase_load", "name": "LDA", "bus": "a1", "rated_voltage_kv": 66.0, "rated_frequency_hz": 50.0,
+     "active_power_mw": 20.0, "reactive_power_mvar": 5.0},
+    {"type": "bergeron_line", "name": "LINE_AB", "buses": ["a1", "b1"], "length_km": 60.0,
+     "per_km": {"type": "sequence", "r1_ohm_per_km": 0.03, "l1_h_per_km": 0.0009, "c1_f_per_km": 1.27e-8,
+                "r0_ohm_per_km": 0.2, "l0_h_per_km": 0.003, "c0_f_per_km": 7.0e-9}},
+    {"type": "three_phase_load", "name": "LDB", "bus": "b1", "rated_voltage_kv": 66.0, "rated_frequency_hz": 50.0,
+     "active_power_mw": 40.0, "reactive_power_mvar": 10.0},
+    {"type": "fault", "name": "F1", "bus": "b1", "phases": ["a", "b", "c"], "ground": true,
+     "fault_resistance_ohm": 0.5, "ground_resistance_ohm": 0.5, "start_time_s": 0.04, "clear_time_s": 0.08},
+    {"type": "bergeron_line", "name": "LINE_BC", "buses": ["b1", "c1"], "length_km": 80.0,
+     "per_km": {"type": "sequence", "r1_ohm_per_km": 0.03, "l1_h_per_km": 0.0009, "c1_f_per_km": 1.27e-8,
+                "r0_ohm_per_km": 0.2, "l0_h_per_km": 0.003, "c0_f_per_km": 7.0e-9}},
+    {"type": "three_phase_source", "name": "GC", "bus": "c1", "line_voltage_rms_v": 66000.0, "frequency_hz": 50.0,
+     "angle_deg": -5.0,
+     "impedance": {"type": "sequence", "r1_ohm": 0.8, "l1_h": 0.025465, "r0_ohm": 1.6, "l0_h": 0.076394}},
+    {"type": "three_phase_load", "name": "LDC", "bus": "c1", "rated_voltage_kv": 66.0, "rated_frequency_hz": 50.0,
+     "active_power_mw": 15.0, "reactive_power_mvar": 3.0}
+  ],
+  "outputs": [
+    {"type": "bus_voltage", "bus": "a1"},
+    {"type": "bus_voltage", "bus": "b1"},
+    {"type": "bus_voltage", "bus": "c1"},
+    {"type": "branch_current", "component": "F1"},
+    {"type": "branch_current", "component": "LINE_AB"}
+  ]
+}

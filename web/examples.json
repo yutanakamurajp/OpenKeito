@@ -1,0 +1,168 @@
+{
+  "default": "three_phase_fault.json",
+  "groups": [
+    { "id": "basics", "title": "Basics" },
+    { "id": "network", "title": "Three-phase networks and lines" },
+    { "id": "machines", "title": "Synchronous machines and converters" },
+    { "id": "power-electronics", "title": "Power electronics" },
+    { "id": "nonlinear", "title": "Nonlinear elements" },
+    { "id": "controls", "title": "Control blocks" }
+  ],
+  "examples": [
+    {
+      "file": "rlc.json",
+      "group": "basics",
+      "title": "Series RLC step response",
+      "description": "1 V DC switched onto R, L and C in series: an underdamped oscillation at 1.59 kHz. The smallest model, a good one to edit.",
+      "columns": ["V(n3)", "I(L1)"]
+    },
+    {
+      "file": "rl_breaker.json",
+      "group": "basics",
+      "title": "RL load switched by a breaker",
+      "description": "A breaker closes at 5 ms and, after the opening command at 52 ms, interrupts at the next current zero. The Events tab lists both actions.",
+      "columns": ["V(n1)", "V(n2)", "I(CB1)"]
+    },
+    {
+      "file": "three_phase_fault.json",
+      "group": "network",
+      "title": "Single line to ground fault behind a transformer",
+      "description": "A 66 kV source, a 50 km line and a YNd11 transformer, started from the steady state. Phase a is faulted at 0.1 s and cleared at a current zero. Has a frequency scan of the impedances seen from two buses.",
+      "columns": ["V(b2.a)", "V(b2.b)", "V(b2.c)", "I(F1.a)"],
+      "scanColumns": ["Zmag(b2.a)", "Zdeg(b2.a)", "Z1mag(b2)", "Z1deg(b2)", "Z0mag(b2)", "Z0deg(b2)"]
+    },
+    {
+      "file": "line_energization.json",
+      "group": "network",
+      "title": "Energization of an open 100 km line",
+      "description": "Travelling waves on a distributed-parameter line: the open end reaches about 2.4 times the source peak. The frequency scan shows the resonances seen from the open end.",
+      "columns": ["V(b1.a)", "V(b2.a)", "V(b2.b)", "V(b2.c)", "I(LINE1.0.a)"]
+    },
+    {
+      "file": "line_areas.json",
+      "group": "network",
+      "title": "Three areas joined by two travelling-wave lines",
+      "description": "Two sources feed a load bus over two lines; a three-phase fault on the load bus is cleared at the current zeros. The lines split the circuit into three parts that are solved separately.",
+      "columns": ["V(b1.a)", "V(b1.b)", "V(b1.c)", "I(F1.a)", "I(F1.b)", "I(F1.c)"]
+    },
+    {
+      "file": "synchronous_machine.json",
+      "group": "machines",
+      "title": "Synchronous machine: terminal fault and swing",
+      "description": "A 555 MVA generator against an infinite bus. A three-phase fault at its terminals lasts 70 ms; then the rotor swings at about 1.3 Hz.",
+      "columns": ["I(G1.a)", "I(G1.b)", "I(G1.c)", "S(speed)", "S(vt)", "S(p)"]
+    },
+    {
+      "file": "machine_avr_governor.json",
+      "group": "machines",
+      "title": "Islanded generator with excitation system and governor",
+      "description": "A load step of 10 % on a generator that runs alone: the frequency falls and settles 0.5 % low (droop), the excitation system restores the terminal voltage. 8 s in 80 000 steps.",
+      "columns": ["V(b1.a)", "S(speed)", "S(vt)", "S(pm)"]
+    },
+    {
+      "file": "transition_three_times.json",
+      "group": "machines",
+      "title": "Transition through three times of a schedule",
+      "description": "A generator, a load and a grid followed through three hours of a schedule in one run: the set points ramp over 1 s and the run settles for 6 s, twice. The generator has an excitation system, a governor and a stabilizer; the load is switched in parts. Made by openkeito.pandapower.transition. 14.5 s in 145 000 steps.",
+      "columns": ["S(gen0_p)", "S(gen0_q)", "S(gen0_speed)", "S(gen0_vt)"]
+    },
+    {
+      "file": "converter.json",
+      "group": "machines",
+      "title": "Grid-following converter: step of the active power",
+      "description": "The averaged model of a 2 MVA inverter with its phase-locked loop and current control. The active power reference steps from 1.0 to 1.6 MW at 0.1 s.",
+      "columns": ["I(PV1.a)", "I(PV1.b)", "I(PV1.c)", "S(PV1.p)", "S(PV1.i_d)", "S(PV1.i_ref.d)"]
+    },
+    {
+      "file": "converter_voltage_support.json",
+      "group": "machines",
+      "title": "Grid-following converter: current limit during a fault",
+      "description": "A fault takes the bus voltage to 0.5 per unit. The converter turns to reactive current and its current stays at the limit of 1.1 per unit; after the fault it returns to its operating point.",
+      "columns": ["V(b1.a)", "I(PV1.a)", "I(PV1.b)", "I(PV1.c)", "S(PV1.i_d)", "S(PV1.i_q)", "S(PV1.v_d)"]
+    },
+    {
+      "file": "held_injection.json",
+      "group": "machines",
+      "title": "Controlled current injection started in the steady state",
+      "description": "An averaged inverter written with control blocks (PLL, dq to abc) that reproduces the current of the phasor solution from t = 0: the run stays in its steady state.",
+      "columns": ["V(b1.a)", "I(INV1.a)", "I(INV1.b)", "I(INV1.c)", "S(pll.frequency_hz)"]
+    },
+    {
+      "file": "wecc_ibr.json",
+      "group": "machines",
+      "title": "WECC generic IBR (REGCA1 / REECA1 / REPCA1)",
+      "description": "A 10 MVA inverter-based resource built with WECC generic plant, electrical, and converter controls using piecewise-linear limits (VDL1, VDL2, LVPL, LVACM) and dynamic PI/lag limits. A three-phase fault at 0.2 s dips the voltage and triggers reactive current support and active current limiting before recovering.",
+      "columns": ["V(b_ibr.a)", "I(IBR1.a)", "S(vt_pu)", "S(p_pu)", "S(q_pu)", "S(ip_gen)", "S(iq_gen)"]
+    },
+    {
+      "file": "buck.json",
+      "group": "power-electronics",
+      "title": "Buck converter, open loop",
+      "description": "100 V, 10 kHz PWM with duty 0.41: the output settles at 41 V. 20 000 steps of 1 µs with about 800 switching events.",
+      "columns": ["V(out)", "I(L1)"]
+    },
+    {
+      "file": "buck_interpolated.json",
+      "group": "power-electronics",
+      "title": "Buck converter, switching instants within the step",
+      "description": "The same converter with a ten times larger step and \"switching\": \"interpolated\": the switch and the diode act between grid points (see the times in the Events tab).",
+      "columns": ["V(out)", "I(L1)"]
+    },
+    {
+      "file": "buck_pi.json",
+      "group": "power-electronics",
+      "title": "Buck converter, PI voltage control",
+      "description": "A PI controller on the duty holds the output at 30 V. 100 000 steps, one row in ten recorded.",
+      "columns": ["V(out)", "I(L1)", "S(duty)"]
+    },
+    {
+      "file": "rectifier.json",
+      "group": "power-electronics",
+      "title": "Diode bridge with capacitor input",
+      "description": "A single-phase bridge charging a capacitor: short current pulses near the voltage peaks. 100 000 rows, to try the chart on a long result.",
+      "columns": ["V(a)", "U(R1)", "I(D1)", "I(D2)"]
+    },
+    {
+      "file": "transformer_inrush.json",
+      "group": "nonlinear",
+      "title": "Inrush current of a saturable transformer",
+      "description": "A transformer with an open secondary switched on at a voltage zero: the core saturates and the first current peak is 1.85 times the rated peak.",
+      "columns": ["V(p1)", "I(T1.0)"]
+    },
+    {
+      "file": "saturable_reactor.json",
+      "group": "nonlinear",
+      "title": "Half-wave rectifier with a saturable reactor",
+      "description": "A reactor with a three-segment flux–current curve in series with a diode; the current peaks in the saturated segment.",
+      "columns": ["V(n3)", "U(L1)", "I(L1)"]
+    },
+    {
+      "file": "arrester.json",
+      "group": "nonlinear",
+      "title": "Surge arrester limiting a current surge",
+      "description": "A 20 kA surge into a 400 Ω line protected by a metal-oxide arrester: 171 kV instead of 8 MV.",
+      "columns": ["V(n1)", "I(MOV1)", "I(R1)"]
+    },
+    {
+      "file": "current_control.json",
+      "group": "controls",
+      "title": "Current control with a controlled voltage source",
+      "description": "A PI controller whose zero cancels the pole of an RL circuit: the current follows a step of its reference like a first-order lag.",
+      "columns": ["I(L1)", "V(n1)", "S(i_ref)", "S(v_command)"]
+    },
+    {
+      "file": "pll.json",
+      "group": "controls",
+      "title": "Phase-locked loop",
+      "description": "A PLL locks on a 50.5 Hz voltage, once as one block and once built from elementary blocks; both give the same frequency.",
+      "columns": ["V(b1.a)", "S(pll.frequency_hz)", "S(f_blocks)"]
+    },
+    {
+      "file": "control_blocks.json",
+      "group": "controls",
+      "title": "A tour of the control blocks",
+      "description": "One set point shaped by a rate limiter, lags, a lead-lag, a delay, a limiter and more. Choose the signals to compare.",
+      "columns": ["S(p_step)", "S(p_ramped)", "S(p_filtered)", "S(p_second_order)", "S(p_delayed)"]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "format": "openkeito-model",
+  "version": "0.1",
+  "name": "RL load switched by a breaker",
+  "description": "100 V peak, 50 Hz source. The breaker closes at 5 ms and receives the opening command at 52 ms; it opens at the next current zero.",
+  "simulation": {
+    "time_step_s": 1e-5,
+    "end_time_s": 0.08
+  },
+  "components": [
+    {"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {"type": "sine", "amplitude": 100.0, "frequency_hz": 50.0}},
+    {"type": "switch", "name": "CB1", "nodes": ["n1", "n2"], "close_time_s": 0.005, "open_time_s": 0.052},
+    {"type": "resistor", "name": "R1", "nodes": ["n2", "n3"], "resistance_ohm": 1.0},
+    {"type": "inductor", "name": "L1", "nodes": ["n3", "gnd"], "inductance_h": 0.01}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "n1"},
+    {"type": "node_voltage", "node": "n2"},
+    {"type": "branch_current", "component": "CB1"}
+  ]
+}

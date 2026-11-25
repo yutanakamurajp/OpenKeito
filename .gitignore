@@ -1,0 +1,23 @@
+/target/
+/results/
+*.xpf
+*.xtf
+*.xmf
+*.xsf
+
+# Python
+/.venv/
+__pycache__/
+*.pyd
+*.pdb
+*.so
+.pytest_cache/
+
+# WebAssembly: the output of wasm-bindgen
+/crates/openkeito-wasm/pkg/
+
+# The browser demo: the assembled directory (web/build.mjs) and Wrangler's cache
+/web/dist/
+.wrangler/
+# Tables and figures made by paper/make.py
+/paper/out/

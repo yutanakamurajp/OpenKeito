@@ -1,0 +1,31 @@
+{
+  "format": "openkeito-model",
+  "version": "0.2",
+  "name": "buck converter, open loop",
+  "description": "100 V input, 10 kHz PWM with duty 0.41 from a triangular carrier, L = 1 mH, C = 100 uF, R = 10 ohm. Continuous conduction; after the LC start-up transient the average output voltage settles at D*E = 41 V with an inductor current ripple of (1-D)*D*E/(L*f) = 2.42 A. With 100 time steps per period the comparator crossings of D = 0.41 fall between grid points.",
+  "simulation": {
+    "time_step_s": 1e-6,
+    "end_time_s": 0.02,
+    "method": "2s-dirk"
+  },
+  "components": [
+    {"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {"type": "dc", "value": 100.0}},
+    {"type": "controlled_switch", "name": "S1", "nodes": ["n1", "sw"], "gate": "pwm"},
+    {"type": "diode", "name": "D1", "nodes": ["gnd", "sw"]},
+    {"type": "inductor", "name": "L1", "nodes": ["sw", "out"], "inductance_h": 1e-3},
+    {"type": "capacitor", "name": "C1", "nodes": ["out", "gnd"], "capacitance_f": 1e-4},
+    {"type": "resistor", "name": "R1", "nodes": ["out", "gnd"], "resistance_ohm": 10.0}
+  ],
+  "controls": [
+    {"type": "constant", "name": "duty", "value": 0.41},
+    {"type": "triangle_wave", "name": "carrier", "frequency_hz": 10000.0},
+    {"type": "comparator", "name": "pwm", "inputs": ["duty", "carrier"]}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "sw"},
+    {"type": "node_voltage", "node": "out"},
+    {"type": "branch_current", "component": "L1"},
+    {"type": "branch_current", "component": "D1"},
+    {"type": "signal", "signal": "pwm"}
+  ]
+}

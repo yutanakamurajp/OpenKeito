@@ -1,0 +1,172 @@
+# Third-Party Licenses
+
+This file is generated deterministically from `Cargo.lock` via
+`cargo metadata --format-version 1 --locked` by
+`scripts/generate_licenses.py`. Do not edit it by hand.
+
+## Scope
+
+- **Rust crates (`Cargo.lock`)**: 133 external crates resolved by the
+  workspace, checked against `deny.toml` (`cargo deny check licenses sources bans`).
+- **Web browser page (`web/`)**: **0 external JavaScript dependencies**.
+  The browser interface uses plain HTML, CSS, and ES modules with no runtime or
+  build-time package dependencies (`web/package.json` declares `"type": "module"`
+  for Node.js tooling only).
+- **Python package (`python/`, `pyproject.toml`)**: declares `numpy>=1.24` at
+  runtime and optional extras (`pandas`, `pandapower`, `powsybl`, `mcp`, `test`,
+  `lint`, `paper`). None of those packages are vendored in this repository; they are
+  installed separately by the user under their own licenses when selected.
+
+## License summary (Rust external crates)
+
+| SPDX License | Crates |
+|---|---|
+| `(MIT OR Apache-2.0) AND Unicode-3.0` | 1 |
+| `Apache-2.0 OR MIT` | 6 |
+| `Apache-2.0 WITH LLVM-exception` | 1 |
+| `BSD-2-Clause` | 1 |
+| `BSD-2-Clause OR Apache-2.0 OR MIT` | 2 |
+| `MIT` | 38 |
+| `MIT OR Apache-2.0` | 72 |
+| `MIT/Apache-2.0` | 5 |
+| `Unlicense OR MIT` | 3 |
+| `Unlicense/MIT` | 2 |
+| `Zlib OR Apache-2.0 OR MIT` | 2 |
+
+## Rust external crates (133)
+
+| Crate | Version | License | Repository | Authors |
+|---|---|---|---|---|
+| `anstream` | `1.0.0` | `MIT OR Apache-2.0` | https://github.com/rust-cli/anstyle.git | (not specified) |
+| `anstyle` | `1.0.14` | `MIT OR Apache-2.0` | https://github.com/rust-cli/anstyle.git | (not specified) |
+| `anstyle-parse` | `1.0.0` | `MIT OR Apache-2.0` | https://github.com/rust-cli/anstyle.git | (not specified) |
+| `anstyle-query` | `1.1.5` | `MIT OR Apache-2.0` | https://github.com/rust-cli/anstyle.git | (not specified) |
+| `anstyle-wincon` | `3.0.11` | `MIT OR Apache-2.0` | https://github.com/rust-cli/anstyle.git | (not specified) |
+| `autocfg` | `1.5.1` | `Apache-2.0 OR MIT` | https://github.com/cuviper/autocfg | Josh Stone <cuviper@gmail.com> |
+| `bitflags` | `2.13.2` | `MIT OR Apache-2.0` | https://github.com/bitflags/bitflags | The Rust Project Developers |
+| `block-buffer` | `0.10.4` | `MIT OR Apache-2.0` | https://github.com/RustCrypto/utils | RustCrypto Developers |
+| `bumpalo` | `3.20.4` | `MIT OR Apache-2.0` | https://github.com/fitzgen/bumpalo | Nick Fitzgerald <fitzgen@gmail.com> |
+| `bytemuck` | `1.25.2` | `Zlib OR Apache-2.0 OR MIT` | https://github.com/Lokathor/bytemuck | Lokathor <zefria@gmail.com> |
+| `bytemuck_derive` | `1.12.1` | `Zlib OR Apache-2.0 OR MIT` | https://github.com/Lokathor/bytemuck | Lokathor <zefria@gmail.com> |
+| `byteorder` | `1.5.0` | `Unlicense OR MIT` | https://github.com/BurntSushi/byteorder | Andrew Gallant <jamslam@gmail.com> |
+| `cfg-if` | `1.0.5` | `MIT OR Apache-2.0` | https://github.com/rust-lang/cfg-if | Alex Crichton <alex@alexcrichton.com> |
+| `clap` | `4.6.9` | `MIT OR Apache-2.0` | https://github.com/clap-rs/clap | (not specified) |
+| `clap_builder` | `4.6.7` | `MIT OR Apache-2.0` | https://github.com/clap-rs/clap | (not specified) |
+| `clap_derive` | `4.6.9` | `MIT OR Apache-2.0` | https://github.com/clap-rs/clap | (not specified) |
+| `clap_lex` | `1.1.2` | `MIT OR Apache-2.0` | https://github.com/clap-rs/clap | (not specified) |
+| `colorchoice` | `1.0.5` | `MIT OR Apache-2.0` | https://github.com/rust-cli/anstyle.git | (not specified) |
+| `cpufeatures` | `0.2.17` | `MIT OR Apache-2.0` | https://github.com/RustCrypto/utils | RustCrypto Developers |
+| `crossbeam-deque` | `0.8.8` | `MIT OR Apache-2.0` | https://github.com/crossbeam-rs/crossbeam | (not specified) |
+| `crossbeam-epoch` | `0.9.21` | `MIT OR Apache-2.0` | https://github.com/crossbeam-rs/crossbeam | (not specified) |
+| `crossbeam-utils` | `0.8.23` | `MIT OR Apache-2.0` | https://github.com/crossbeam-rs/crossbeam | (not specified) |
+| `crunchy` | `0.2.4` | `MIT` | https://github.com/eira-fransham/crunchy | Eira Fransham <jackefransham@gmail.com> |
+| `crypto-common` | `0.1.7` | `MIT OR Apache-2.0` | https://github.com/RustCrypto/traits | RustCrypto Developers |
+| `defer` | `0.2.1` | `MIT/Apache-2.0` | https://github.com/andrewhickman/defer/ | Andrew Hickman <andrew.hickman1@sky.com>, Zakarum <zaq.dev@icloud.com> |
+| `digest` | `0.10.7` | `MIT OR Apache-2.0` | https://github.com/RustCrypto/traits | RustCrypto Developers |
+| `dyn-clone` | `1.0.20` | `MIT OR Apache-2.0` | https://github.com/dtolnay/dyn-clone | David Tolnay <dtolnay@gmail.com> |
+| `dyn-stack` | `0.13.2` | `MIT` | https://codeberg.org/sarah-quinones/dyn-stack | sarah <> |
+| `dyn-stack-macros` | `0.1.3` | `MIT` | https://github.com/kitegi/dynstack/ | sarah quiñones<sarah@veganb.tw> |
+| `either` | `1.19.0` | `MIT OR Apache-2.0` | https://github.com/rayon-rs/either | (not specified) |
+| `enum-as-inner` | `0.6.1` | `MIT/Apache-2.0` | https://github.com/bluejekyll/enum-as-inner | Benjamin Fry <benjaminfry@me.com> |
+| `equator` | `0.2.2` | `MIT` | https://github.com/sarah-ek/equator/ | sarah <> |
+| `equator` | `0.6.0` | `MIT` | https://github.com/sarah-ek/equator/ | sarah <> |
+| `equator-macro` | `0.2.1` | `MIT` | https://github.com/sarah-ek/equator/ | sarah <> |
+| `equator-macro` | `0.6.0` | `MIT` | https://github.com/sarah-ek/equator/ | sarah <> |
+| `faer` | `0.24.4` | `MIT` | https://codeberg.org/sarah-quinones/faer | sarah quiñones <sarah@veganb.tw> |
+| `faer-traits` | `0.24.0` | `MIT` | https://codeberg.org/sarah-quinones/faer | sarah quiñones <sarah@veganb.tw> |
+| `futures-core` | `0.3.34` | `MIT OR Apache-2.0` | https://github.com/rust-lang/futures-rs | (not specified) |
+| `futures-task` | `0.3.34` | `MIT OR Apache-2.0` | https://github.com/rust-lang/futures-rs | (not specified) |
+| `futures-util` | `0.3.34` | `MIT OR Apache-2.0` | https://github.com/rust-lang/futures-rs | (not specified) |
+| `gemm` | `0.19.0` | `MIT` | https://github.com/sarah-ek/gemm/ | sarah <> |
+| `gemm-c32` | `0.19.0` | `MIT` | https://github.com/sarah-ek/gemm/ | sarah <> |
+| `gemm-c64` | `0.19.0` | `MIT` | https://github.com/sarah-ek/gemm/ | sarah <> |
+| `gemm-common` | `0.19.0` | `MIT` | https://github.com/sarah-ek/gemm/ | sarah <> |
+| `gemm-f16` | `0.19.0` | `MIT` | https://github.com/sarah-ek/gemm/ | sarah <> |
+| `gemm-f32` | `0.19.0` | `MIT` | https://github.com/sarah-ek/gemm/ | sarah <> |
+| `gemm-f64` | `0.19.0` | `MIT` | https://github.com/sarah-ek/gemm/ | sarah <> |
+| `generativity` | `1.2.1` | `MIT OR Apache-2.0` | https://github.com/CAD97/generativity | (not specified) |
+| `generic-array` | `0.14.7` | `MIT` | https://github.com/fizyk20/generic-array.git | Bartłomiej Kamiński <fizyk20@gmail.com>, Aaron Trent <novacrazy@gmail.com> |
+| `half` | `2.7.1` | `MIT OR Apache-2.0` | https://github.com/VoidStarKat/half-rs | Kathryn Long <squeeself@gmail.com> |
+| `heck` | `0.5.0` | `MIT OR Apache-2.0` | https://github.com/withoutboats/heck | (not specified) |
+| `hermit-abi` | `0.5.3` | `MIT OR Apache-2.0` | https://github.com/hermit-os/hermit-rs | (not specified) |
+| `interpol` | `0.2.1` | `MIT` | https://github.com/tanakh/interpol | Hideyuki Tanaka <tanaka.hideyuki@gmail.com> |
+| `is_terminal_polyfill` | `1.70.2` | `MIT OR Apache-2.0` | https://github.com/polyfill-rs/is_terminal_polyfill | (not specified) |
+| `itoa` | `1.0.19` | `MIT OR Apache-2.0` | https://github.com/dtolnay/itoa | David Tolnay <dtolnay@gmail.com> |
+| `js-sys` | `0.3.107` | `MIT OR Apache-2.0` | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys | The wasm-bindgen Developers |
+| `libc` | `0.2.191` | `MIT OR Apache-2.0` | https://github.com/rust-lang/libc | (not specified) |
+| `libm` | `0.2.16` | `MIT` | https://github.com/rust-lang/compiler-builtins | Alex Crichton <alex@alexcrichton.com>, Amanieu d'Antras <amanieu@gmail.com>, Jorge Aparicio <japaricious@gmail.com>, Trevor Gross <tg@trevorgross.com> |
+| `matrixmultiply` | `0.3.11` | `MIT/Apache-2.0` | https://github.com/bluss/matrixmultiply/ | bluss, R. Janis Goldschmidt |
+| `memchr` | `2.8.3` | `Unlicense OR MIT` | https://github.com/BurntSushi/memchr | Andrew Gallant <jamslam@gmail.com>, bluss |
+| `nano-gemm` | `0.2.2` | `MIT` | https://github.com/sarah-ek/nano-gemm/ | (not specified) |
+| `nano-gemm-c32` | `0.2.1` | `MIT` | https://github.com/sarah-ek/nano-gemm/ | sarah <> |
+| `nano-gemm-c64` | `0.2.1` | `MIT` | https://github.com/sarah-ek/nano-gemm/ | sarah <> |
+| `nano-gemm-codegen` | `0.2.1` | `MIT` | https://github.com/sarah-ek/nano-gemm/ | sarah <> |
+| `nano-gemm-core` | `0.2.1` | `MIT` | https://github.com/sarah-ek/nano-gemm/ | sarah <> |
+| `nano-gemm-f32` | `0.2.1` | `MIT` | https://github.com/sarah-ek/nano-gemm/ | sarah <> |
+| `nano-gemm-f64` | `0.2.1` | `MIT` | https://github.com/sarah-ek/nano-gemm/ | sarah <> |
+| `ndarray` | `0.17.2` | `MIT OR Apache-2.0` | https://github.com/rust-ndarray/ndarray | Ulrik Sverdrup "bluss", Jim Turner |
+| `num-complex` | `0.4.6` | `MIT OR Apache-2.0` | https://github.com/rust-num/num-complex | The Rust Project Developers |
+| `num-integer` | `0.1.47` | `MIT OR Apache-2.0` | https://github.com/rust-num/num-integer | The Rust Project Developers |
+| `num-traits` | `0.2.19` | `MIT OR Apache-2.0` | https://github.com/rust-num/num-traits | The Rust Project Developers |
+| `num_cpus` | `1.17.0` | `MIT OR Apache-2.0` | https://github.com/seanmonstar/num_cpus | Sean McArthur <sean@seanmonstar.com> |
+| `numpy` | `0.30.0` | `BSD-2-Clause` | https://github.com/PyO3/rust-numpy | The rust-numpy Project Developers, PyO3 Project and Contributors <https://github.com/PyO3> |
+| `once_cell` | `1.21.4` | `MIT OR Apache-2.0` | https://github.com/matklad/once_cell | Aleksey Kladov <aleksey.kladov@gmail.com> |
+| `once_cell_polyfill` | `1.70.2` | `MIT OR Apache-2.0` | https://github.com/polyfill-rs/once_cell_polyfill | (not specified) |
+| `paste` | `1.0.15` | `MIT OR Apache-2.0` | https://github.com/dtolnay/paste | David Tolnay <dtolnay@gmail.com> |
+| `pin-project-lite` | `0.2.18` | `Apache-2.0 OR MIT` | https://github.com/taiki-e/pin-project-lite | (not specified) |
+| `portable-atomic` | `1.15.0` | `Apache-2.0 OR MIT` | https://github.com/taiki-e/portable-atomic | (not specified) |
+| `portable-atomic-util` | `0.2.8` | `Apache-2.0 OR MIT` | https://github.com/taiki-e/portable-atomic-util | (not specified) |
+| `private-gemm-x86` | `0.1.22` | `MIT` | https://github.com/sarah-quinones/gemm-x64-v2/ | sarah quiñones <sarah@veganb.tw> |
+| `proc-macro2` | `1.0.107` | `MIT OR Apache-2.0` | https://github.com/dtolnay/proc-macro2 | David Tolnay <dtolnay@gmail.com>, Alex Crichton <alex@alexcrichton.com> |
+| `pulp` | `0.22.3` | `MIT` | https://github.com/sarah-quinones/pulp/ | sarah quiñones <sarah@veganb.tw> |
+| `pulp-wasm-simd-flag` | `0.1.1` | `MIT` | https://github.com/sarah-quinones/pulp/ | sarah quiñones <sarah@veganb.tw> |
+| `pyo3` | `0.30.1` | `MIT OR Apache-2.0` | https://github.com/pyo3/pyo3 | PyO3 Project and Contributors <https://github.com/PyO3> |
+| `pyo3-build-config` | `0.30.1` | `MIT OR Apache-2.0` | https://github.com/pyo3/pyo3 | PyO3 Project and Contributors <https://github.com/PyO3> |
+| `pyo3-ffi` | `0.30.1` | `MIT OR Apache-2.0` | https://github.com/pyo3/pyo3 | PyO3 Project and Contributors <https://github.com/PyO3> |
+| `pyo3-macros` | `0.30.1` | `MIT OR Apache-2.0` | https://github.com/pyo3/pyo3 | PyO3 Project and Contributors <https://github.com/PyO3> |
+| `pyo3-macros-backend` | `0.30.1` | `MIT OR Apache-2.0` | https://github.com/pyo3/pyo3 | PyO3 Project and Contributors <https://github.com/PyO3> |
+| `qd` | `0.8.0` | `MIT` | https://github.com/sarah-quinones/qd/ | sarah <> |
+| `quote` | `1.0.47` | `MIT OR Apache-2.0` | https://github.com/dtolnay/quote | David Tolnay <dtolnay@gmail.com> |
+| `raw-cpuid` | `11.6.0` | `MIT` | https://github.com/gz/rust-cpuid | Gerd Zellweger <mail@gerdzellweger.com> |
+| `rawpointer` | `0.2.1` | `MIT/Apache-2.0` | https://github.com/bluss/rawpointer/ | bluss |
+| `rayon` | `1.12.0` | `MIT OR Apache-2.0` | https://github.com/rayon-rs/rayon | (not specified) |
+| `rayon-core` | `1.13.0` | `MIT OR Apache-2.0` | https://github.com/rayon-rs/rayon | (not specified) |
+| `reborrow` | `0.5.5` | `MIT` | https://github.com/sarah-ek/reborrow/ | sarah <> |
+| `ref-cast` | `1.0.27` | `MIT OR Apache-2.0` | https://github.com/dtolnay/ref-cast | David Tolnay <dtolnay@gmail.com> |
+| `ref-cast-impl` | `1.0.27` | `MIT OR Apache-2.0` | https://github.com/dtolnay/ref-cast | David Tolnay <dtolnay@gmail.com> |
+| `rustc-hash` | `2.1.3` | `Apache-2.0 OR MIT` | https://github.com/rust-lang/rustc-hash | The Rust Project Developers |
+| `rustversion` | `1.0.23` | `MIT OR Apache-2.0` | https://github.com/dtolnay/rustversion | David Tolnay <dtolnay@gmail.com> |
+| `same-file` | `1.0.6` | `Unlicense/MIT` | https://github.com/BurntSushi/same-file | Andrew Gallant <jamslam@gmail.com> |
+| `schemars` | `1.2.3` | `MIT` | https://github.com/GREsau/schemars | Graham Esau <gesau@hotmail.co.uk> |
+| `schemars_derive` | `1.2.3` | `MIT` | https://github.com/GREsau/schemars | Graham Esau <gesau@hotmail.co.uk> |
+| `seq-macro` | `0.3.6` | `MIT OR Apache-2.0` | https://github.com/dtolnay/seq-macro | David Tolnay <dtolnay@gmail.com> |
+| `serde` | `1.0.229` | `MIT OR Apache-2.0` | https://github.com/serde-rs/serde | Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com> |
+| `serde_core` | `1.0.229` | `MIT OR Apache-2.0` | https://github.com/serde-rs/serde | Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com> |
+| `serde_derive` | `1.0.229` | `MIT OR Apache-2.0` | https://github.com/serde-rs/serde | Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com> |
+| `serde_derive_internals` | `0.30.0` | `MIT OR Apache-2.0` | https://github.com/serde-rs/serde | Erick Tryzelaar <erick.tryzelaar@gmail.com>, David Tolnay <dtolnay@gmail.com> |
+| `serde_json` | `1.0.154` | `MIT OR Apache-2.0` | https://github.com/serde-rs/json | (not specified) |
+| `sha2` | `0.10.9` | `MIT OR Apache-2.0` | https://github.com/RustCrypto/hashes | RustCrypto Developers |
+| `slab` | `0.4.12` | `MIT` | https://github.com/tokio-rs/slab | Carl Lerche <me@carllerche.com> |
+| `strsim` | `0.11.1` | `MIT` | https://github.com/rapidfuzz/strsim-rs | Danny Guo <danny@dannyguo.com>, maxbachmann <oss@maxbachmann.de> |
+| `syn` | `1.0.109` | `MIT OR Apache-2.0` | https://github.com/dtolnay/syn | David Tolnay <dtolnay@gmail.com> |
+| `syn` | `2.0.119` | `MIT OR Apache-2.0` | https://github.com/dtolnay/syn | David Tolnay <dtolnay@gmail.com> |
+| `syn` | `3.0.10` | `MIT OR Apache-2.0` | https://github.com/dtolnay/syn | David Tolnay <dtolnay@gmail.com> |
+| `sysctl` | `0.6.0` | `MIT` | https://github.com/johalun/sysctl-rs | Johannes Lundberg <johalun0@gmail.com>, Ivan Temchenko <ivan.temchenko@yandex.ua>, Fabian Freyer <fabian.freyer@physik.tu-berlin.de> |
+| `target-lexicon` | `0.13.6` | `Apache-2.0 WITH LLVM-exception` | https://github.com/bytecodealliance/target-lexicon | Dan Gohman <sunfish@mozilla.com> |
+| `thiserror` | `1.0.69` | `MIT OR Apache-2.0` | https://github.com/dtolnay/thiserror | David Tolnay <dtolnay@gmail.com> |
+| `thiserror-impl` | `1.0.69` | `MIT OR Apache-2.0` | https://github.com/dtolnay/thiserror | David Tolnay <dtolnay@gmail.com> |
+| `typenum` | `1.20.1` | `MIT OR Apache-2.0` | https://github.com/paholg/typenum | (not specified) |
+| `unicode-ident` | `1.0.27` | `(MIT OR Apache-2.0) AND Unicode-3.0` | https://github.com/dtolnay/unicode-ident | David Tolnay <dtolnay@gmail.com> |
+| `utf8parse` | `0.2.2` | `Apache-2.0 OR MIT` | https://github.com/alacritty/vte | Joe Wilm <joe@jwilm.com>, Christian Duerr <contact@christianduerr.com> |
+| `version_check` | `0.9.5` | `MIT/Apache-2.0` | https://github.com/SergioBenitez/version_check | Sergio Benitez <sb@sergio.bz> |
+| `walkdir` | `2.5.0` | `Unlicense/MIT` | https://github.com/BurntSushi/walkdir | Andrew Gallant <jamslam@gmail.com> |
+| `wasm-bindgen` | `0.2.130` | `MIT OR Apache-2.0` | https://github.com/wasm-bindgen/wasm-bindgen | The wasm-bindgen Developers |
+| `wasm-bindgen-macro` | `0.2.130` | `MIT OR Apache-2.0` | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro | The wasm-bindgen Developers |
+| `wasm-bindgen-macro-support` | `0.2.130` | `MIT OR Apache-2.0` | https://github.com/wasm-bindgen/wasm-bindgen/tree/main/crates/macro-support | The wasm-bindgen Developers |
+| `wasm-bindgen-shared` | `0.2.130` | `MIT OR Apache-2.0` | https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared | The wasm-bindgen Developers |
+| `winapi-util` | `0.1.11` | `Unlicense OR MIT` | https://github.com/BurntSushi/winapi-util | Andrew Gallant <jamslam@gmail.com> |
+| `windows-link` | `0.2.1` | `MIT OR Apache-2.0` | https://github.com/microsoft/windows-rs | (not specified) |
+| `windows-sys` | `0.61.2` | `MIT OR Apache-2.0` | https://github.com/microsoft/windows-rs | (not specified) |
+| `zerocopy` | `0.8.63` | `BSD-2-Clause OR Apache-2.0 OR MIT` | https://github.com/google/zerocopy | (not specified) |
+| `zerocopy-derive` | `0.8.63` | `BSD-2-Clause OR Apache-2.0 OR MIT` | https://github.com/google/zerocopy | (not specified) |
+| `zmij` | `1.0.23` | `MIT` | https://github.com/dtolnay/zmij | David Tolnay <dtolnay@gmail.com> |

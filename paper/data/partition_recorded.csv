@@ -1,0 +1,13 @@
+# docs/performance.md, 'Travelling-wave lines and the division of the circuit (M4)': time per step in microseconds at 10 us.
+# pi: pi lines; off: Bergeron lines, not divided; every_line_1: divided at every line, one thread; auto_N: partitioning auto with N threads
+# (1 thread on one pinned P core; 2, 4, 8 threads on the 8 P cores; a number of threads above the number of parts is the number of parts).
+# Recorded 2026-11-22. Empty: not measured.
+system,unknowns,parts,largest_part_unknowns,pi,off,every_line_1,auto_1,auto_2,auto_4,auto_8
+ring of 10 buses,51,1,51,1.56,1.58,2.05,1.59,,,
+ring of 30 buses,147,3,78,5.37,4.98,5.91,5.15,4.48,,
+ring of 100 buses,483,7,78,19.6,17.9,19.8,17.6,15.9,11.6,8.73
+ring of 300 buses,1443,21,78,62.7,54.7,58.9,52.6,36.6,28.8,21.1
+ring of 1000 buses,4803,70,78,248,231,239,211,112,75.3,51.8
+8 blocks of 30 buses,867,8,111,47.5,40.8,37.6,37.9,29.0,20.7,15.4
+16 blocks of 30 buses,1731,16,111,89.5,81.5,75.2,75.6,49.9,36.2,25.4
+8 blocks of 100 buses,2547,8,321,139,130,126,126,87.3,59.5,42.7

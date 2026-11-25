@@ -1,0 +1,44 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "phase-locked loop on the voltage of an averaged inverter",
+  "description": "A three-phase controlled voltage source (400 V, 50.5 Hz, from dq0_to_abc with a ramp as its angle) feeds a 10 kW load through a reactor. A PLL with a nominal frequency of 50 Hz (natural frequency 20 Hz, damping 0.7) locks on the load voltage and settles at 50.5 Hz. The same loop is built a second time from the blocks abc_to_dq0, gain, pi, sum and integrator (a loop through the integrator): theta equals pll.theta and f_blocks equals pll.frequency_hz.",
+  "simulation": {
+    "time_step_s": 5e-5,
+    "end_time_s": 0.2
+  },
+  "components": [
+    {"type": "three_phase_controlled_source", "name": "VSC1", "bus": "b1", "signals": ["e.a", "e.b", "e.c"],
+     "impedance": {"type": "sequence", "r1_ohm": 0.1, "l1_h": 0.001, "r0_ohm": 0.1, "l0_h": 0.001}},
+    {"type": "three_phase_load", "name": "LD1", "bus": "b1", "rated_voltage_kv": 0.4, "rated_frequency_hz": 50.0,
+     "active_power_mw": 0.01, "reactive_power_mvar": 0.0}
+  ],
+  "controls": [
+    {"type": "ramp", "name": "angle", "slope_per_s": 317.3008580125691},
+    {"type": "constant", "name": "e_d", "value": 326.6},
+    {"type": "constant", "name": "e_q", "value": 0.0},
+    {"type": "dq0_to_abc", "name": "e", "d": "e_d", "q": "e_q", "angle": "angle"},
+
+    {"type": "three_phase_measurement", "name": "v", "quantity": {"type": "bus_voltage", "bus": "b1"}},
+    {"type": "pll", "name": "pll", "inputs": ["v.a", "v.b", "v.c"], "nominal_frequency_hz": 50.0, "rated_amplitude": 326.6,
+     "proportional_gain": 175.93, "integral_gain_per_s": 15791.4, "initial_angle_rad": 0.0},
+
+    {"type": "abc_to_dq0", "name": "v_dq", "inputs": ["v.a", "v.b", "v.c"], "angle": "theta"},
+    {"type": "gain", "name": "q_pu", "input": "v_dq.q", "gain": 0.0030618493570116352},
+    {"type": "pi", "name": "omega_deviation", "input": "q_pu", "proportional_gain": 175.93, "integral_gain_per_s": 15791.4},
+    {"type": "constant", "name": "omega_nominal", "value": 314.1592653589793},
+    {"type": "sum", "name": "omega", "inputs": ["omega_nominal", "omega_deviation"], "signs": [1.0, 1.0]},
+    {"type": "integrator", "name": "theta", "input": "omega", "initial_value": 0.0, "minimum": 0.0, "maximum": 6.283185307179586, "wrap": true},
+    {"type": "gain", "name": "f_blocks", "input": "omega", "gain": 0.15915494309189535}
+  ],
+  "outputs": [
+    {"type": "bus_voltage", "bus": "b1"},
+    {"type": "branch_current", "component": "VSC1"},
+    {"type": "signal", "signal": "pll.frequency_hz"},
+    {"type": "signal", "signal": "pll.theta"},
+    {"type": "signal", "signal": "pll.d"},
+    {"type": "signal", "signal": "pll.q"},
+    {"type": "signal", "signal": "f_blocks"},
+    {"type": "signal", "signal": "theta"}
+  ]
+}

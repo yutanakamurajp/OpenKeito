@@ -1,0 +1,13 @@
+# docs/performance.md, 'Three-phase ring systems, 1 s (M2)': time per step in microseconds, one P core, 2S-DIRK.
+# Recorded 2026-11-22 on the machine named there. Empty: not measured.
+time_step_us,buses,unknowns,sparse_us_per_step,dense_us_per_step
+10,10,51,1.54,2.92
+10,30,147,5.55,18.9
+10,100,483,20.7,187
+10,300,1443,66.0,1840
+10,1000,4803,257,
+50,10,51,1.58,2.85
+50,30,147,5.53,19.0
+50,100,483,20.0,184
+50,300,1443,61.0,2270
+50,1000,4803,274,

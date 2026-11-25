@@ -1,0 +1,32 @@
+{
+  "format": "openkeito-model",
+  "version": "0.3",
+  "name": "Single line to ground fault behind a transformer",
+  "description": "66 kV, 50 Hz source with Z1 = 0.5 + j5 ohm and Z0 = 1 + j15 ohm, a 50 km line as two pi sections, a 30 MVA YNd11 transformer to 6.6 kV and a 5 MW load. Phase a of bus b2 is faulted to ground at 0.1 s; the clearing command at 0.2 s opens the fault at the next current zero. The run starts from the steady state; `openkeito scan` computes the impedances seen from b2 and b3 from 10 Hz to 2.5 kHz.",
+  "simulation": {
+    "time_step_s": 2e-5,
+    "end_time_s": 0.3,
+    "initialization": "steady_state"
+  },
+  "components": [
+    {"type": "three_phase_source", "name": "G1", "bus": "src", "line_voltage_rms_v": 66000.0, "frequency_hz": 50.0,
+     "impedance": {"type": "sequence", "r1_ohm": 0.5, "l1_h": 0.015915, "r0_ohm": 1.0, "l0_h": 0.047746}},
+    {"type": "pi_line", "name": "LINE1", "buses": ["src", "b2"], "length_km": 50.0, "sections": 2,
+     "per_km": {"type": "sequence", "r1_ohm_per_km": 0.03, "l1_h_per_km": 0.0009, "c1_f_per_km": 1.25e-8,
+                "r0_ohm_per_km": 0.2, "l0_h_per_km": 0.003, "c0_f_per_km": 6.0e-9}},
+    {"type": "three_phase_transformer", "name": "T1", "buses": ["b2", "b3"], "vector_group": "YNd11",
+     "rated_voltage_kv": [66.0, 6.6], "rated_power_mva": 30.0, "rated_frequency_hz": 50.0,
+     "impedance_percent": 10.0, "resistance_percent": 0.5, "no_load_current_percent": 0.5, "no_load_loss_kw": 20.0},
+    {"type": "coupled_rl", "name": "LOAD", "buses": ["b3", ["n3", "n3", "n3"]],
+     "impedance": {"type": "sequence", "r1_ohm": 8.0, "l1_h": 0.0127, "r0_ohm": 8.0, "l0_h": 0.0127}},
+    {"type": "resistor", "name": "RN", "nodes": ["n3", "gnd"], "resistance_ohm": 1e6},
+    {"type": "fault", "name": "F1", "bus": "b2", "phases": ["a"], "ground": true, "start_time_s": 0.1, "clear_time_s": 0.2}
+  ],
+  "frequency_scan": {"start_hz": 10.0, "stop_hz": 2500.0, "points": 250, "spacing": "log", "nodes": ["b2.a", "b3.a"], "buses": ["b2"]},
+  "outputs": [
+    {"type": "bus_voltage", "bus": "b2"},
+    {"type": "bus_voltage", "bus": "b3"},
+    {"type": "branch_current", "component": "F1"},
+    {"type": "branch_current", "component": "T1"}
+  ]
+}

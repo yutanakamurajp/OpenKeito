@@ -1,0 +1,142 @@
+name: CI
+
+# Runs on pushes and pull requests (and can also be started by hand with
+# `gh workflow run CI --ref <branch>`).
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  licenses:
+    # The licenses and sources of the dependencies, and no dependency without a
+    # version (deny.toml). A new license identifier fails until it is allowed.
+    # Also verify THIRD-PARTY-LICENSES and (when present in this checkout) the
+    # public manifest checks.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses sources bans
+      - run: python3 scripts/generate_licenses.py --check
+      - run: |
+          if [ -f scripts/check_public_manifest.py ]; then
+            python3 scripts/check_public_manifest.py --strict
+          fi
+
+  wasm:
+    # The browser version (M5): build the module without host paths, then run
+    # the examples in Node from it and with the command, and compare the
+    # results (crates/openkeito-wasm/README.md).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build wasm and cli without host paths
+        run: |
+          CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
+          RUSTUP_HOME_DIR="${RUSTUP_HOME:-$HOME/.rustup}"
+          export RUSTFLAGS="--remap-path-prefix=${{ github.workspace }}=. --remap-path-prefix=${CARGO_HOME_DIR}=/cargo --remap-path-prefix=${RUSTUP_HOME_DIR}=/rustup"
+          cargo build --release --locked -p openkeito-wasm --target wasm32-unknown-unknown
+          cargo build --release --locked -p openkeito-cli
+      - name: Verify host paths are absent from release artifacts
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, sys
+          needles = {
+              os.path.abspath("${{ github.workspace }}").encode(),
+              os.path.expanduser("~").encode(),
+          }
+          needles = {n for n in needles if len(n) > 1}
+          targets = [
+              pathlib.Path("target/wasm32-unknown-unknown/release/openkeito_wasm.wasm"),
+              pathlib.Path("target/release/openkeito"),
+          ]
+          leaked = []
+          for path in targets:
+              data = path.read_bytes()
+              for needle in sorted(needles):
+                  if needle in data:
+                      leaked.append(f"{path}: contains {needle!r}")
+          if leaked:
+              print("\n".join(leaked), file=sys.stderr)
+              sys.exit(1)
+          print("OK: no workspace or home paths in wasm/cli release artifacts.")
+          PY
+      # The command wasm-bindgen must be the version of the crate in Cargo.lock.
+      - run: |
+          version=$(cargo metadata --format-version 1 --locked \
+            | python3 -c 'import json, sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "wasm-bindgen"))')
+          cargo install wasm-bindgen-cli --version "$version" --locked
+      - run: >
+          wasm-bindgen --target web --out-dir crates/openkeito-wasm/pkg
+          target/wasm32-unknown-unknown/release/openkeito_wasm.wasm
+      # Node as the runner image has it (the script needs 18 or later).
+      - run: node --version && node crates/openkeito-wasm/tests/compare.mjs
+      # The page of the browser demo (web/README.md): the tests of its parts
+      # that need no browser, then the assembly, which runs every example of
+      # the page's list from the module and checks the list against examples/.
+      - run: node --test web/tests/modules.test.mjs
+      - run: node web/build.mjs
+
+  python:
+    # The Python package: build it with maturin (PEP 517) without host paths,
+    # lint it and run pytest. Python 3.10 is the oldest version the package
+    # supports.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11"]
+        include:
+          - os: ubuntu-latest
+            python: "3.10"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Configure RUSTFLAGS to remap workspace and cargo paths
+        run: |
+          python - <<'PY'
+          import os, pathlib
+          remaps = [
+              f"--remap-path-prefix={os.getcwd()}=.",
+              f"--remap-path-prefix={os.environ.get('CARGO_HOME') or os.path.expanduser('~/.cargo')}=/cargo",
+              f"--remap-path-prefix={os.environ.get('RUSTUP_HOME') or os.path.expanduser('~/.rustup')}=/rustup",
+          ]
+          existing = os.environ.get("RUSTFLAGS", "").strip()
+          value = " ".join([existing, *remaps]).strip()
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              fh.write(f"RUSTFLAGS={value}\n")
+          PY
+      - run: python -m pip install ".[test,lint,pandapower,powsybl,mcp,paper]"
+      - run: python -m pyflakes python paper scripts
+      - run: python -m pytest

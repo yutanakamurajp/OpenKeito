@@ -1,0 +1,40 @@
+[package]
+name = "openkeito-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories = ["science", "simulation", "command-line-utilities"]
+readme = "README.md"
+description = "Command line interface of OpenKeito"
+
+[lib]
+name = "openkeito_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "openkeito"
+path = "src/main.rs"
+required-features = ["native"]
+
+[[test]]
+name = "cli"
+required-features = ["native"]
+
+[features]
+default = ["native"]
+# The command (argument parsing) and `batch` (threads, files). A host without
+# them, such as the browser (openkeito-wasm), uses the library without it.
+native = ["dep:clap", "dep:rayon"]
+
+[dependencies]
+openkeito-model.workspace = true
+openkeito-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+clap = { workspace = true, optional = true }
+sha2.workspace = true
+rayon = { workspace = true, optional = true }

@@ -1,0 +1,21 @@
+[package]
+name = "openkeito-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+description = "Solver core of OpenKeito: nodal analysis, integration methods, basic components"
+
+[dependencies]
+openkeito-model.workspace = true
+serde.workspace = true
+num-complex.workspace = true
+faer.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -1,0 +1,25 @@
+{
+  "format": "openkeito-model",
+  "version": "0.2",
+  "name": "single-phase diode bridge with capacitor input",
+  "description": "100 V rms, 50 Hz source feeding a diode bridge with C = 1 mF and R = 100 ohm on the DC side (w*R*C = 31.4). With ideal elements the diodes stop conducting at 91.8 deg and start again at 66.5 deg after the next zero crossing (conduction angle 25.3 deg); the DC voltage swings between 129.7 V and 141.4 V. The DC side has no connection to gnd while every diode blocks; the blocking resistances hold its potential.",
+  "simulation": {
+    "time_step_s": 1e-6,
+    "end_time_s": 0.1
+  },
+  "components": [
+    {"type": "voltage_source", "name": "E1", "nodes": ["a", "gnd"], "waveform": {"type": "sine", "amplitude": 141.42135623730951, "frequency_hz": 50.0}},
+    {"type": "diode", "name": "D1", "nodes": ["a", "p"]},
+    {"type": "diode", "name": "D2", "nodes": ["n", "a"]},
+    {"type": "diode", "name": "D3", "nodes": ["gnd", "p"]},
+    {"type": "diode", "name": "D4", "nodes": ["n", "gnd"]},
+    {"type": "capacitor", "name": "C1", "nodes": ["p", "n"], "capacitance_f": 1e-3},
+    {"type": "resistor", "name": "R1", "nodes": ["p", "n"], "resistance_ohm": 100.0}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "a"},
+    {"type": "branch_voltage", "component": "R1"},
+    {"type": "branch_current", "component": "D1"},
+    {"type": "branch_current", "component": "D2"}
+  ]
+}

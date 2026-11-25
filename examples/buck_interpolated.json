@@ -1,0 +1,32 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "buck converter, switching instants within the time step",
+  "description": "The converter of buck.json with a time step of 10 us (10 steps per 100 us carrier period) and \"switching\": \"interpolated\". The duty 0.405 puts the comparator crossings at 20.25 and 79.75 us, between grid points: the switch and the diode act at these instants (see events.csv), the on-time is 40.5 us in every period and the average output settles at D*E = 40.5 V. With \"switching\": \"grid\" the on-time would be 50 us (duty 0.5).",
+  "simulation": {
+    "time_step_s": 1e-05,
+    "end_time_s": 0.02,
+    "method": "2s-dirk",
+    "switching": "interpolated"
+  },
+  "components": [
+    {"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {"type": "dc", "value": 100.0}},
+    {"type": "controlled_switch", "name": "S1", "nodes": ["n1", "sw"], "gate": "pwm"},
+    {"type": "diode", "name": "D1", "nodes": ["gnd", "sw"]},
+    {"type": "inductor", "name": "L1", "nodes": ["sw", "out"], "inductance_h": 0.001},
+    {"type": "capacitor", "name": "C1", "nodes": ["out", "gnd"], "capacitance_f": 0.0001},
+    {"type": "resistor", "name": "R1", "nodes": ["out", "gnd"], "resistance_ohm": 10.0}
+  ],
+  "controls": [
+    {"type": "constant", "name": "duty", "value": 0.405},
+    {"type": "triangle_wave", "name": "carrier", "frequency_hz": 10000.0},
+    {"type": "comparator", "name": "pwm", "inputs": ["duty", "carrier"]}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "sw"},
+    {"type": "node_voltage", "node": "out"},
+    {"type": "branch_current", "component": "L1"},
+    {"type": "branch_current", "component": "D1"},
+    {"type": "signal", "signal": "pwm"}
+  ]
+}

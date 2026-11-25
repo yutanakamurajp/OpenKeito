@@ -1,0 +1,59 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "Islanded generator with an excitation system and a governor",
+  "description": "A 555 MVA, 24 kV, 60 Hz generator alone on a load of 400 MW and 100 Mvar. The excitation system and the governor are control blocks. Excitation (a static exciter as IEEE Std 421.5 ST1A reduced to its main path): Efd = lag(KA (Vref - Vt)) with KA = 200, TA = 0.02 s and the ceiling -6.4 to 7 pu as limits of the lag (non-windup). Governor: Pm = lag(Pref - (speed - 1) / R) with a droop R = 5 %, a turbine time constant of 0.5 s and the limits 0 to 1.1 pu; the torque is Pm / speed. The references are initial_value blocks that take, at t = 0, the values that hold the operating point the machine starts from (Vref = Vt + Efd0 / KA, Pref = Tm0), so the run stays in its steady state until 0.5 s, when switches connect another 55.5 MW (10 % of the rating). The frequency then falls and settles 0.5 % (droop times the load step) below 60 Hz; the terminal voltage dips and is restored but for the error Efd / KA of the proportional regulator.",
+  "simulation": {
+    "time_step_s": 1e-4,
+    "end_time_s": 8.0,
+    "initialization": "steady_state",
+    "output_interval_steps": 50
+  },
+  "components": [
+    {"type": "synchronous_machine", "name": "G1", "bus": "b1",
+     "rated_power_mva": 555.0, "rated_voltage_kv": 24.0, "frequency_hz": 60.0,
+     "xd_pu": 1.81, "xq_pu": 1.76, "xd_transient_pu": 0.30, "xq_transient_pu": 0.65,
+     "xd_subtransient_pu": 0.23, "xq_subtransient_pu": 0.25, "xl_pu": 0.15, "ra_pu": 0.003,
+     "td0_transient_s": 8.0, "td0_subtransient_s": 0.03, "tq0_transient_s": 1.0, "tq0_subtransient_s": 0.07,
+     "inertia_h_s": 3.5, "damping_pu": 0.0,
+     "field_voltage_signal": "efd", "mechanical_torque_signal": "tm",
+     "operating_point": {"active_power_mw": 400.0, "reactive_power_mvar": 100.0, "voltage_pu": 1.0, "angle_deg": 0.0}},
+    {"type": "three_phase_load", "name": "LOAD", "bus": "b1", "rated_voltage_kv": 24.0, "rated_frequency_hz": 60.0,
+     "active_power_mw": 400.0, "reactive_power_mvar": 100.0},
+    {"type": "switch", "name": "SA", "nodes": ["b1.a", "step.a"], "close_time_s": 0.5},
+    {"type": "switch", "name": "SB", "nodes": ["b1.b", "step.b"], "close_time_s": 0.5},
+    {"type": "switch", "name": "SC", "nodes": ["b1.c", "step.c"], "close_time_s": 0.5},
+    {"type": "resistor", "name": "RA", "nodes": ["step.a", "gnd"], "resistance_ohm": 10.378},
+    {"type": "resistor", "name": "RB", "nodes": ["step.b", "gnd"], "resistance_ohm": 10.378},
+    {"type": "resistor", "name": "RC", "nodes": ["step.c", "gnd"], "resistance_ohm": 10.378}
+  ],
+  "controls": [
+    {"type": "measurement", "name": "vt", "quantity": {"type": "component_signal", "component": "G1", "signal": "terminal_voltage_pu"}},
+    {"type": "measurement", "name": "speed", "quantity": {"type": "component_signal", "component": "G1", "signal": "speed_pu"}},
+    {"type": "measurement", "name": "efd0", "quantity": {"type": "component_signal", "component": "G1", "signal": "initial_field_voltage_pu"}},
+    {"type": "measurement", "name": "tm0", "quantity": {"type": "component_signal", "component": "G1", "signal": "initial_mechanical_torque_pu"}},
+
+    {"type": "gain", "name": "efd0_over_ka", "input": "efd0", "gain": 0.005},
+    {"type": "sum", "name": "vref_now", "inputs": ["vt", "efd0_over_ka"], "signs": [1.0, 1.0]},
+    {"type": "initial_value", "name": "vref", "input": "vref_now"},
+    {"type": "sum", "name": "v_error", "inputs": ["vref", "vt"], "signs": [1.0, -1.0]},
+    {"type": "lag", "name": "efd", "input": "v_error", "gain": 200.0, "time_constant_s": 0.02, "minimum": -6.4, "maximum": 7.0},
+
+    {"type": "initial_value", "name": "pref", "input": "tm0"},
+    {"type": "constant", "name": "one", "value": 1.0},
+    {"type": "sum", "name": "speed_error", "inputs": ["one", "speed"], "signs": [1.0, -1.0]},
+    {"type": "gain", "name": "droop", "input": "speed_error", "gain": 20.0},
+    {"type": "sum", "name": "p_command", "inputs": ["pref", "droop"], "signs": [1.0, 1.0]},
+    {"type": "lag", "name": "pm", "input": "p_command", "gain": 1.0, "time_constant_s": 0.5, "minimum": 0.0, "maximum": 1.1},
+    {"type": "quotient", "name": "tm", "inputs": ["pm", "speed"], "minimum_denominator": 0.1}
+  ],
+  "outputs": [
+    {"type": "bus_voltage", "bus": "b1"},
+    {"type": "branch_current", "component": "G1"},
+    {"type": "signal", "signal": "speed"},
+    {"type": "signal", "signal": "vt"},
+    {"type": "signal", "signal": "efd"},
+    {"type": "signal", "signal": "pm"},
+    {"type": "signal", "signal": "tm"}
+  ]
+}

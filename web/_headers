@@ -1,0 +1,8 @@
+# Response headers for Cloudflare Pages (web/README.md). Optional: the page
+# works without this file. It only tightens what the page may load: its own
+# files, and WebAssembly ('wasm-unsafe-eval' allows compiling the module, not
+# eval). web/serve.mjs sends the same headers, so a local test covers them.
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer

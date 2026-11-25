@@ -1,0 +1,54 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "control blocks",
+  "description": "A power set point shaped by control blocks and injected as a current into a resistor. The set point steps from 0.5 to 0.8 at 0.1 s; it is limited in its rate, filtered by a lag, and compared with a schedule. The other blocks show what each type does to the same signals. The controlled current source follows p_filtered one time step late (0.1 ms).",
+  "simulation": {
+    "time_step_s": 1e-4,
+    "end_time_s": 0.3
+  },
+  "components": [
+    {"type": "controlled_current_source", "name": "J1", "nodes": ["gnd", "n1"], "signal": "p_filtered"},
+    {"type": "resistor", "name": "R1", "nodes": ["n1", "gnd"], "resistance_ohm": 10.0}
+  ],
+  "controls": [
+    {"type": "step", "name": "p_step", "time_s": 0.1, "before": 0.5, "after": 0.8},
+    {"type": "time_series", "name": "p_schedule", "times_s": [0.0, 0.1, 0.2], "values": [0.5, 0.8, 0.6], "interpolation": "linear"},
+    {"type": "rate_limiter", "name": "p_ramped", "input": "p_step", "rising_rate_per_s": 5.0, "falling_rate_per_s": 5.0},
+    {"type": "lag", "name": "p_filtered", "input": "p_ramped", "time_constant_s": 0.02},
+    {"type": "transfer_function", "name": "p_second_order", "input": "p_step", "numerator": [10000.0], "denominator": [1.0, 60.0, 10000.0]},
+    {"type": "lead_lag", "name": "p_lead", "input": "p_filtered", "lead_time_constant_s": 0.05, "lag_time_constant_s": 0.01},
+    {"type": "delay", "name": "p_delayed", "input": "p_ramped", "delay_s": 0.005},
+    {"type": "limiter", "name": "p_limited", "input": "p_second_order", "maximum": 0.82},
+    {"type": "sum", "name": "error", "inputs": ["p_schedule", "p_filtered"], "signs": [1.0, -1.0]},
+    {"type": "dead_band", "name": "error_outside_band", "input": "error", "lower": -0.02, "upper": 0.02},
+    {"type": "integrator", "name": "energy", "input": "p_filtered", "initial_value": 0.0, "maximum": 0.15},
+    {"type": "initial_value", "name": "p_start", "input": "p_filtered"},
+    {"type": "quotient", "name": "p_relative", "inputs": ["p_filtered", "p_start"], "minimum_denominator": 0.01},
+    {"type": "sine_wave", "name": "wave", "amplitude": 0.1, "frequency_hz": 10.0, "offset": 0.7},
+    {"type": "product", "name": "modulated", "inputs": ["wave", "p_relative"]},
+    {"type": "comparator", "name": "above_wave", "inputs": ["p_filtered", "wave"]},
+    {"type": "selector", "name": "chosen", "condition": "above_wave", "inputs": ["p_limited", "p_delayed"]},
+    {"type": "ramp", "name": "angle", "slope_per_s": 62.83185307179586},
+    {"type": "function", "name": "cosine", "function": "cos", "inputs": ["angle"]},
+    {"type": "function", "name": "smallest", "function": "min", "inputs": ["p_filtered", "wave", "p_delayed"]}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "n1"},
+    {"type": "signal", "signal": "p_step"},
+    {"type": "signal", "signal": "p_schedule"},
+    {"type": "signal", "signal": "p_ramped"},
+    {"type": "signal", "signal": "p_filtered"},
+    {"type": "signal", "signal": "p_second_order"},
+    {"type": "signal", "signal": "p_lead"},
+    {"type": "signal", "signal": "p_delayed"},
+    {"type": "signal", "signal": "p_limited"},
+    {"type": "signal", "signal": "error_outside_band"},
+    {"type": "signal", "signal": "energy"},
+    {"type": "signal", "signal": "p_relative"},
+    {"type": "signal", "signal": "modulated"},
+    {"type": "signal", "signal": "chosen"},
+    {"type": "signal", "signal": "cosine"},
+    {"type": "signal", "signal": "smallest"}
+  ]
+}

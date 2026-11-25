@@ -1,0 +1,40 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "controlled current injection that starts in the steady state",
+  "description": "A 6.6 kV source behind an impedance, a load, and a three-phase controlled current source (an averaged inverter) at one bus, started from the steady state. The phasor solution takes the inverter as 200 A at -15 degrees (steady_state). The controls reproduce that current from t = 0 on: a PLL starts locked on the bus voltage, the current at t = 0 in the frame of the PLL is kept as the set point (initial_value), and dq0_to_abc turns it back into phase currents with the angle of the next grid point (theta_next = pll.theta + 2 pi 50 Hz x 50 us), because a controlled source follows its signal one time step late. The run stays in the steady state: see initialization in summary.json.",
+  "simulation": {
+    "time_step_s": 5e-5,
+    "end_time_s": 0.1,
+    "initialization": "steady_state"
+  },
+  "components": [
+    {"type": "three_phase_source", "name": "G1", "bus": "b1", "line_voltage_rms_v": 6600.0, "frequency_hz": 50.0,
+     "impedance": {"type": "sequence", "r1_ohm": 0.1, "l1_h": 0.002, "r0_ohm": 0.3, "l0_h": 0.006}},
+    {"type": "three_phase_load", "name": "LD1", "bus": "b1", "rated_voltage_kv": 6.6, "rated_frequency_hz": 50.0,
+     "active_power_mw": 2.0, "reactive_power_mvar": 0.5},
+    {"type": "three_phase_controlled_current_source", "name": "INV1", "bus": "b1", "signals": ["i_ref.a", "i_ref.b", "i_ref.c"],
+     "steady_state": {"current_rms_a": 200.0, "angle_deg": -15.0}}
+  ],
+  "controls": [
+    {"type": "three_phase_measurement", "name": "v", "quantity": {"type": "bus_voltage", "bus": "b1"}},
+    {"type": "three_phase_measurement", "name": "i", "quantity": {"type": "branch_current", "component": "INV1"}},
+    {"type": "pll", "name": "pll", "inputs": ["v.a", "v.b", "v.c"], "nominal_frequency_hz": 50.0, "rated_amplitude": 5388.9,
+     "proportional_gain": 175.93, "integral_gain_per_s": 15791.4},
+    {"type": "abc_to_dq0", "name": "i_dq", "inputs": ["i.a", "i.b", "i.c"], "angle": "pll.theta"},
+    {"type": "initial_value", "name": "id_ref", "input": "i_dq.d"},
+    {"type": "initial_value", "name": "iq_ref", "input": "i_dq.q"},
+    {"type": "constant", "name": "one_step", "value": 0.015707963267948967},
+    {"type": "sum", "name": "theta_next", "inputs": ["pll.theta", "one_step"], "signs": [1.0, 1.0]},
+    {"type": "dq0_to_abc", "name": "i_ref", "d": "id_ref", "q": "iq_ref", "angle": "theta_next"}
+  ],
+  "outputs": [
+    {"type": "bus_voltage", "bus": "b1"},
+    {"type": "branch_current", "component": "INV1"},
+    {"type": "branch_current", "component": "G1"},
+    {"type": "signal", "signal": "pll.frequency_hz"},
+    {"type": "signal", "signal": "pll.q"},
+    {"type": "signal", "signal": "id_ref"},
+    {"type": "signal", "signal": "iq_ref"}
+  ]
+}

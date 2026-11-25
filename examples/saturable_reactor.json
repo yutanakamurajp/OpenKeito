@@ -1,0 +1,22 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "half-wave rectifier with a saturable reactor",
+  "description": "A 60 V, 50 Hz source feeds a 5 ohm load through a saturable reactor (0.1 H up to 1 A, 25 mH up to 3 A, 10 mH above) and a diode. The diode conducts while the flux of the reactor is positive; the current peaks at 8.8 A in the saturated segment. The segments of the reactor and the state of the diode are found on the same solutions.",
+  "simulation": {
+    "time_step_s": 5e-5,
+    "end_time_s": 0.06,
+    "method": "2s-dirk"
+  },
+  "components": [
+    {"type": "voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "waveform": {"type": "sine", "amplitude": 60.0, "frequency_hz": 50.0}},
+    {"type": "nonlinear_inductor", "name": "L1", "nodes": ["n1", "n2"], "current_a": [1.0, 3.0, 8.0], "flux_linkage_wb": [0.1, 0.15, 0.2]},
+    {"type": "diode", "name": "D1", "nodes": ["n2", "n3"]},
+    {"type": "resistor", "name": "R1", "nodes": ["n3", "gnd"], "resistance_ohm": 5.0}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "n3"},
+    {"type": "branch_current", "component": "L1"},
+    {"type": "branch_voltage", "component": "L1"}
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "surge arrester limiting a current surge",
+  "description": "A 20 kA surge (sine front, crest at 8 us) enters a line of 400 ohm surge impedance (R1) protected by a metal-oxide arrester. The arrester is given by two power-law segments i = p (v / 100 kV)^q that meet at 1.1 pu and is converted into a piecewise-linear table (0.1 % in voltage). Without the arrester the crest would be 8 MV; with it, 171 kV.",
+  "simulation": {
+    "time_step_s": 1e-7,
+    "end_time_s": 1.6e-5,
+    "method": "2s-dirk"
+  },
+  "components": [
+    {"type": "current_source", "name": "J1", "nodes": ["gnd", "n1"], "waveform": {"type": "sine", "amplitude": 20000.0, "frequency_hz": 31250.0}},
+    {"type": "resistor", "name": "R1", "nodes": ["n1", "gnd"], "resistance_ohm": 400.0},
+    {"type": "nonlinear_resistor", "name": "MOV1", "nodes": ["n1", "gnd"],
+     "characteristic": {"type": "power_law", "reference_voltage_v": 100000.0, "max_current_a": 40000.0,
+       "segments": [
+         {"coefficient_a": 0.01, "exponent": 12.0, "from_voltage_pu": 0.6},
+         {"coefficient_a": 0.0017985878990921362, "exponent": 30.0, "from_voltage_pu": 1.1}
+       ]}}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "n1"},
+    {"type": "branch_current", "component": "MOV1"},
+    {"type": "branch_current", "component": "R1"}
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "current control with a controlled voltage source",
+  "description": "A PI controller holds the current of R = 1 ohm and L = 10 mH at its reference, which steps from 0 to 1 A at 5 ms. With Kp = L wc and Ki = R wc (wc = 500 rad/s) the zero of the controller cancels the pole of the circuit, and the current would follow 1 - exp(-wc t) if the controller acted at once. The controlled source follows its signal one time step late (0.1 ms), which shows as a small overshoot of the voltage command.",
+  "simulation": {
+    "time_step_s": 1e-4,
+    "end_time_s": 0.03
+  },
+  "components": [
+    {"type": "controlled_voltage_source", "name": "E1", "nodes": ["n1", "gnd"], "signal": "v_command"},
+    {"type": "resistor", "name": "R1", "nodes": ["n1", "n2"], "resistance_ohm": 1.0},
+    {"type": "inductor", "name": "L1", "nodes": ["n2", "gnd"], "inductance_h": 0.01}
+  ],
+  "controls": [
+    {"type": "step", "name": "i_ref", "time_s": 0.005, "before": 0.0, "after": 1.0},
+    {"type": "measurement", "name": "i", "quantity": {"type": "branch_current", "component": "L1"}},
+    {"type": "sum", "name": "error", "inputs": ["i_ref", "i"], "signs": [1.0, -1.0]},
+    {"type": "pi", "name": "v_command", "input": "error", "proportional_gain": 5.0, "integral_gain_per_s": 500.0}
+  ],
+  "outputs": [
+    {"type": "branch_current", "component": "L1"},
+    {"type": "node_voltage", "node": "n1"},
+    {"type": "signal", "signal": "i_ref"},
+    {"type": "signal", "signal": "v_command"}
+  ]
+}

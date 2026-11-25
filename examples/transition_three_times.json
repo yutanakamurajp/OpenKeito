@@ -1,0 +1,615 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "Transition through three times of a schedule",
+  "description": "A 100 MVA generator and a load at a 110 kV bus, 30 km from a grid of 5000 MVA, followed through three hours of a schedule in one run (made by openkeito.pandapower.transition(net, plan, times=\"all\", start_time_s=0.5, ramp_time_s=1, settle_time_s=6, load_steps=2)). Load: 70 MW and 20 Mvar, then 90 and 25, then 60 and 15. Generator: 60 MW, then 75, then 55, at 1.02 pu; the grid delivers the rest. The run starts from the power flow of the first hour. From 0.5 s the set points move over 1 s to those of the second hour, and the run settles for 6 s; from 7.5 s they move to those of the third hour, and it settles until 14.5 s. The hours between are not run. The generator has an excitation system (gen0_efd), a governor (gen0_valve, gen0_pm) and a stabilizer (gen0_pss) made of control blocks; gen0_dpref and gen0_dvref are the changes of its load and voltage references that the power flows of the three hours ask for. The load is the impedance of each hour: load0 is what all three hours have, load0_out* what the third no longer has and load0_in* what only the second has, each in two parts behind switches that act at a quarter and at three quarters of the ramp. The grid is a source whose internal voltage (ext_grid0_ed, ext_grid0_eq) moves with the power flows. At 7.5 s and at 14.5 s the bus voltages are within 1e-4 pu, and the power of the generator within 0.01 MW, of the power flow of the second and of the third hour.",
+  "simulation": {
+    "time_step_s": 0.0001,
+    "end_time_s": 14.5,
+    "method": "2s-dirk",
+    "initialization": "steady_state",
+    "output_interval_steps": 20
+  },
+  "components": [
+    {
+      "type": "three_phase_controlled_source",
+      "name": "ext_grid0",
+      "bus": "b0",
+      "signals": [
+        "ext_grid0_e.a",
+        "ext_grid0_e.b",
+        "ext_grid0_e.c"
+      ],
+      "steady_state": {
+        "line_voltage_rms_v": 112179.08007747396,
+        "angle_deg": 0.11195341315546989
+      },
+      "impedance": {
+        "type": "sequence",
+        "r1_ohm": 0.2407990000308174,
+        "l1_h": 0.007664870229298008,
+        "r0_ohm": 0.2407990000308174,
+        "l0_h": 0.007664870229298008
+      }
+    },
+    {
+      "type": "synchronous_machine",
+      "name": "gen0",
+      "bus": "b1",
+      "rated_power_mva": 100.0,
+      "rated_voltage_kv": 110.0,
+      "frequency_hz": 50.0,
+      "xd_pu": 1.8,
+      "xq_pu": 1.7,
+      "xd_transient_pu": 0.3,
+      "xq_transient_pu": 0.55,
+      "xd_subtransient_pu": 0.25,
+      "xq_subtransient_pu": 0.25,
+      "xl_pu": 0.15,
+      "ra_pu": 0.003,
+      "td0_transient_s": 8.0,
+      "td0_subtransient_s": 0.03,
+      "tq0_transient_s": 1.0,
+      "tq0_subtransient_s": 0.07,
+      "inertia_h_s": 4.0,
+      "damping_pu": 0.0,
+      "operating_point": {
+        "active_power_mw": 60.0,
+        "reactive_power_mvar": 21.015992760658264,
+        "voltage_pu": 1.0199999999999998,
+        "angle_deg": -0.5588640778765551
+      },
+      "field_voltage_signal": "gen0_efd",
+      "mechanical_torque_signal": "gen0_tm"
+    },
+    {
+      "type": "three_phase_load",
+      "rated_voltage_kv": 112.19999999999997,
+      "rated_frequency_hz": 50.0,
+      "name": "load0",
+      "bus": "b1",
+      "active_power_mw": 59.99999999999997,
+      "reactive_power_mvar": 14.999999999999993
+    },
+    {
+      "type": "three_phase_load",
+      "rated_voltage_kv": 112.19999999999997,
+      "rated_frequency_hz": 50.0,
+      "name": "load0_out0",
+      "bus": "load0_out0",
+      "active_power_mw": 5.000000000000017,
+      "reactive_power_mvar": 2.500000000000004
+    },
+    {
+      "type": "switch",
+      "name": "load0_out0_sw_a",
+      "nodes": [
+        "b1.a",
+        "load0_out0.a"
+      ],
+      "initially_closed": true,
+      "open_time_s": 7.75
+    },
+    {
+      "type": "switch",
+      "name": "load0_out0_sw_b",
+      "nodes": [
+        "b1.b",
+        "load0_out0.b"
+      ],
+      "initially_closed": true,
+      "open_time_s": 7.75
+    },
+    {
+      "type": "switch",
+      "name": "load0_out0_sw_c",
+      "nodes": [
+        "b1.c",
+        "load0_out0.c"
+      ],
+      "initially_closed": true,
+      "open_time_s": 7.75
+    },
+    {
+      "type": "three_phase_load",
+      "rated_voltage_kv": 112.19999999999997,
+      "rated_frequency_hz": 50.0,
+      "name": "load0_out1",
+      "bus": "load0_out1",
+      "active_power_mw": 5.000000000000017,
+      "reactive_power_mvar": 2.500000000000004
+    },
+    {
+      "type": "switch",
+      "name": "load0_out1_sw_a",
+      "nodes": [
+        "b1.a",
+        "load0_out1.a"
+      ],
+      "initially_closed": true,
+      "open_time_s": 8.25
+    },
+    {
+      "type": "switch",
+      "name": "load0_out1_sw_b",
+      "nodes": [
+        "b1.b",
+        "load0_out1.b"
+      ],
+      "initially_closed": true,
+      "open_time_s": 8.25
+    },
+    {
+      "type": "switch",
+      "name": "load0_out1_sw_c",
+      "nodes": [
+        "b1.c",
+        "load0_out1.c"
+      ],
+      "initially_closed": true,
+      "open_time_s": 8.25
+    },
+    {
+      "type": "three_phase_load",
+      "rated_voltage_kv": 112.19999999999997,
+      "rated_frequency_hz": 50.0,
+      "name": "load0_in0",
+      "bus": "load0_in0",
+      "active_power_mw": 9.999999999999979,
+      "reactive_power_mvar": 2.4999999999999947
+    },
+    {
+      "type": "switch",
+      "name": "load0_in0_sw_a",
+      "nodes": [
+        "b1.a",
+        "load0_in0.a"
+      ],
+      "close_time_s": 0.75,
+      "open_time_s": 7.75
+    },
+    {
+      "type": "switch",
+      "name": "load0_in0_sw_b",
+      "nodes": [
+        "b1.b",
+        "load0_in0.b"
+      ],
+      "close_time_s": 0.75,
+      "open_time_s": 7.75
+    },
+    {
+      "type": "switch",
+      "name": "load0_in0_sw_c",
+      "nodes": [
+        "b1.c",
+        "load0_in0.c"
+      ],
+      "close_time_s": 0.75,
+      "open_time_s": 7.75
+    },
+    {
+      "type": "three_phase_load",
+      "rated_voltage_kv": 112.19999999999997,
+      "rated_frequency_hz": 50.0,
+      "name": "load0_in1",
+      "bus": "load0_in1",
+      "active_power_mw": 9.999999999999979,
+      "reactive_power_mvar": 2.4999999999999947
+    },
+    {
+      "type": "switch",
+      "name": "load0_in1_sw_a",
+      "nodes": [
+        "b1.a",
+        "load0_in1.a"
+      ],
+      "close_time_s": 1.25,
+      "open_time_s": 8.25
+    },
+    {
+      "type": "switch",
+      "name": "load0_in1_sw_b",
+      "nodes": [
+        "b1.b",
+        "load0_in1.b"
+      ],
+      "close_time_s": 1.25,
+      "open_time_s": 8.25
+    },
+    {
+      "type": "switch",
+      "name": "load0_in1_sw_c",
+      "nodes": [
+        "b1.c",
+        "load0_in1.c"
+      ],
+      "close_time_s": 1.25,
+      "open_time_s": 8.25
+    },
+    {
+      "type": "pi_line",
+      "name": "line0",
+      "buses": [
+        "b0",
+        "b1"
+      ],
+      "length_km": 30.0,
+      "per_km": {
+        "type": "sequence",
+        "r1_ohm_per_km": 0.06,
+        "l1_h_per_km": 0.0012732395447351628,
+        "c1_f_per_km": 9.000000000000001e-09,
+        "r0_ohm_per_km": 0.18,
+        "l0_h_per_km": 0.0038197186342054886,
+        "c0_f_per_km": 5.4e-09
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "type": "bus_voltage",
+      "bus": "b0"
+    },
+    {
+      "type": "bus_voltage",
+      "bus": "b1"
+    },
+    {
+      "type": "branch_current",
+      "component": "ext_grid0"
+    },
+    {
+      "type": "signal",
+      "signal": "gen0_speed"
+    },
+    {
+      "type": "signal",
+      "signal": "gen0_vt"
+    },
+    {
+      "type": "signal",
+      "signal": "gen0_p"
+    },
+    {
+      "type": "signal",
+      "signal": "gen0_q"
+    },
+    {
+      "type": "signal",
+      "signal": "gen0_id"
+    },
+    {
+      "type": "signal",
+      "signal": "gen0_iq"
+    }
+  ],
+  "controls": [
+    {
+      "type": "measurement",
+      "name": "gen0_speed",
+      "quantity": {
+        "type": "component_signal",
+        "component": "gen0",
+        "signal": "speed_pu"
+      }
+    },
+    {
+      "type": "constant",
+      "name": "gen0_one",
+      "value": 1.0
+    },
+    {
+      "type": "sum",
+      "name": "gen0_pss_input",
+      "inputs": [
+        "gen0_speed",
+        "gen0_one"
+      ],
+      "signs": [
+        1.0,
+        -1.0
+      ]
+    },
+    {
+      "type": "transfer_function",
+      "name": "gen0_pss_washout",
+      "input": "gen0_pss_input",
+      "numerator": [
+        13.299999999999999,
+        0.0
+      ],
+      "denominator": [
+        1.4,
+        1.0
+      ]
+    },
+    {
+      "type": "lead_lag",
+      "name": "gen0_pss_lead1",
+      "input": "gen0_pss_washout",
+      "lead_time_constant_s": 0.154,
+      "lag_time_constant_s": 0.033
+    },
+    {
+      "type": "limiter",
+      "name": "gen0_pss",
+      "input": "gen0_pss_lead1",
+      "minimum": -0.1,
+      "maximum": 0.1
+    },
+    {
+      "type": "measurement",
+      "name": "gen0_vt",
+      "quantity": {
+        "type": "component_signal",
+        "component": "gen0",
+        "signal": "terminal_voltage_pu"
+      }
+    },
+    {
+      "type": "measurement",
+      "name": "gen0_efd0",
+      "quantity": {
+        "type": "component_signal",
+        "component": "gen0",
+        "signal": "initial_field_voltage_pu"
+      }
+    },
+    {
+      "type": "gain",
+      "name": "gen0_efd0_over_gain",
+      "input": "gen0_efd0",
+      "gain": 0.005
+    },
+    {
+      "type": "sum",
+      "name": "gen0_vref_now",
+      "inputs": [
+        "gen0_vt",
+        "gen0_efd0_over_gain"
+      ],
+      "signs": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "type": "initial_value",
+      "name": "gen0_vref0",
+      "input": "gen0_vref_now"
+    },
+    {
+      "type": "time_series",
+      "name": "gen0_dvref",
+      "times_s": [
+        0.5,
+        1.5,
+        7.5,
+        8.5
+      ],
+      "values": [
+        0.0,
+        0.0012378076389941795,
+        0.0012378076389941795,
+        -0.0006735885034569722
+      ],
+      "interpolation": "linear"
+    },
+    {
+      "type": "sum",
+      "name": "gen0_vref",
+      "inputs": [
+        "gen0_vref0",
+        "gen0_dvref"
+      ],
+      "signs": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "type": "sum",
+      "name": "gen0_v_error",
+      "inputs": [
+        "gen0_vref",
+        "gen0_vt",
+        "gen0_pss"
+      ],
+      "signs": [
+        1.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "type": "lag",
+      "name": "gen0_efd",
+      "input": "gen0_v_error",
+      "gain": 200.0,
+      "time_constant_s": 0.02,
+      "minimum": -6.4,
+      "maximum": 7.0
+    },
+    {
+      "type": "measurement",
+      "name": "gen0_tm0",
+      "quantity": {
+        "type": "component_signal",
+        "component": "gen0",
+        "signal": "initial_mechanical_torque_pu"
+      }
+    },
+    {
+      "type": "initial_value",
+      "name": "gen0_pref0",
+      "input": "gen0_tm0"
+    },
+    {
+      "type": "time_series",
+      "name": "gen0_dpref",
+      "times_s": [
+        0.5,
+        1.5,
+        7.5,
+        8.5
+      ],
+      "values": [
+        0.0,
+        0.15066409868775,
+        0.15066409868775,
+        -0.05022628692669873
+      ],
+      "interpolation": "linear"
+    },
+    {
+      "type": "sum",
+      "name": "gen0_pref",
+      "inputs": [
+        "gen0_pref0",
+        "gen0_dpref"
+      ],
+      "signs": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "type": "sum",
+      "name": "gen0_speed_error",
+      "inputs": [
+        "gen0_one",
+        "gen0_speed"
+      ],
+      "signs": [
+        1.0,
+        -1.0
+      ]
+    },
+    {
+      "type": "gain",
+      "name": "gen0_droop",
+      "input": "gen0_speed_error",
+      "gain": 20.0
+    },
+    {
+      "type": "sum",
+      "name": "gen0_p_command",
+      "inputs": [
+        "gen0_pref",
+        "gen0_droop"
+      ],
+      "signs": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "type": "lag",
+      "name": "gen0_valve",
+      "input": "gen0_p_command",
+      "time_constant_s": 0.2,
+      "minimum": 0.0,
+      "maximum": 1.1
+    },
+    {
+      "type": "lag",
+      "name": "gen0_pm",
+      "input": "gen0_valve",
+      "time_constant_s": 0.3
+    },
+    {
+      "type": "quotient",
+      "name": "gen0_tm",
+      "inputs": [
+        "gen0_pm",
+        "gen0_speed"
+      ],
+      "minimum_denominator": 0.1
+    },
+    {
+      "type": "ramp",
+      "name": "transition_theta",
+      "start_time_s": 0.0,
+      "slope_per_s": 314.1592653589793,
+      "initial": 0.031415926535897934
+    },
+    {
+      "type": "time_series",
+      "name": "ext_grid0_ed",
+      "times_s": [
+        0.5,
+        1.5,
+        7.5,
+        8.5
+      ],
+      "values": [
+        91593.66048492074,
+        91590.35821187893,
+        91590.35821187893,
+        91597.39490660296
+      ],
+      "interpolation": "linear"
+    },
+    {
+      "type": "time_series",
+      "name": "ext_grid0_eq",
+      "times_s": [
+        0.5,
+        1.5,
+        7.5,
+        8.5
+      ],
+      "values": [
+        178.97017986081812,
+        268.11750195327807,
+        268.11750195327807,
+        89.90959923881341
+      ],
+      "interpolation": "linear"
+    },
+    {
+      "type": "dq0_to_abc",
+      "name": "ext_grid0_e",
+      "d": "ext_grid0_ed",
+      "q": "ext_grid0_eq",
+      "angle": "transition_theta"
+    },
+    {
+      "type": "measurement",
+      "name": "gen0_p",
+      "quantity": {
+        "type": "component_signal",
+        "component": "gen0",
+        "signal": "active_power_pu"
+      }
+    },
+    {
+      "type": "measurement",
+      "name": "gen0_q",
+      "quantity": {
+        "type": "component_signal",
+        "component": "gen0",
+        "signal": "reactive_power_pu"
+      }
+    },
+    {
+      "type": "measurement",
+      "name": "gen0_id",
+      "quantity": {
+        "type": "component_signal",
+        "component": "gen0",
+        "signal": "id_pu"
+      }
+    },
+    {
+      "type": "measurement",
+      "name": "gen0_iq",
+      "quantity": {
+        "type": "component_signal",
+        "component": "gen0",
+        "signal": "iq_pu"
+      }
+    }
+  ]
+}

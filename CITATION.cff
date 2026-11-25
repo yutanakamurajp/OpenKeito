@@ -1,0 +1,27 @@
+# How to cite OpenKeito (Citation File Format, https://citation-file-format.github.io).
+#
+# RELEASE: `version` and `date-released` are set at every release (AGENTS.md,
+# "Versions and releases"); the values below are those of the last release.
+# The authors are named as in LICENSE-MIT until the maintainers decide otherwise.
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "OpenKeito"
+abstract: >-
+  An open electromagnetic transient (EMT) simulator for power systems, driven by
+  people and AI agents: models as JSON documents, a solver verified against
+  closed-form solutions, conversion from pandapower and PowSyBl (CGMES) networks
+  that starts from their power flow, schedules, and an MCP server.
+authors:
+  - name: "The OpenKeito contributors"
+version: "0.11.0"
+date-released: "2026-11-24"
+license:
+  - MIT
+  - Apache-2.0
+repository-code: "https://github.com/yutanakamurajp/OpenKeito"
+keywords:
+  - power systems
+  - electromagnetic transients
+  - EMT
+  - simulation
