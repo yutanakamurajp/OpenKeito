@@ -37,8 +37,8 @@ connects to them. OpenKeito writes that step and leaves the rest to the existing
 
 ## What it simulates
 
-Linear and nonlinear R, L and C (saturation, surge arresters), sources, switches and
-diodes, three-phase sources, coupled RL branches, pi lines and travelling-wave lines,
+Linear and nonlinear R, L and C (saturation, surge arresters), sources, switches,
+diodes and thyristors, three-phase sources, coupled RL branches, pi lines and travelling-wave lines,
 transformers with saturation, faults, synchronous machines, grid-following converters
 (averaged) and a library of control blocks (transfer functions, limiters, delays, abc/dq0,
 phase-locked loop). Around them: steady-state initialization from a phasor solution,
@@ -109,8 +109,8 @@ Exit codes: 0 success, 1 the simulation failed, 2 the model or the request is in
 `openkeito schema` and `openkeito components` are the reference for field names; read them
 instead of guessing. [docs/model.md](docs/model.md) has the conventions (signs, three-phase
 buses, phasors, when a switching action takes effect), the simulation settings and a
-section for each family of components. The current format version is `"0.8"` (set
-`"version": "0.8"` when using 0.8 additions such as the `expression` control block,
+section for each family of components. The current format version is `"0.9"` (set
+`"version": "0.9"` when using the `thyristor`, `"0.8"` for the `expression` control block,
 `"0.7"` for `piecewise_linear` or signal-name limits, `"0.6"` for `tap_changes`,
 `impedance_changes` or `zero_sequence_inverted`, or `"0.5"` for `bergeron_line`,
 `switching`, machines and converters); models of older versions are read as before.
@@ -137,6 +137,7 @@ time step, and a 10 kHz buck converter at 10 µs is more accurate than at 1 µs 
 | `held_injection.json` | a controlled three-phase current source that starts in the steady state |
 | `buck.json`, `buck_pi.json`, `buck_interpolated.json` | a 10 kHz buck converter: open loop, with PI voltage control, and with switching instants within the step |
 | `rectifier.json` | diode bridge with capacitor input |
+| `thyristor_rectifier.json` | six-pulse thyristor rectifier fired at 30 deg (`thyristor`, format `0.9`), with commutation overlap |
 | `arrester.json`, `saturable_reactor.json`, `transformer_inrush.json` | nonlinear elements: a surge arrester, a saturable reactor with a diode, the inrush current of a transformer |
 | `control_blocks.json`, `current_control.json`, `pll.json` | control blocks: a set point shaped by blocks, PI control of a current, a phase-locked loop |
 | `expression_control.json` | mathematical expressions (`expression` control block, format `0.8`) driving a controlled current source |

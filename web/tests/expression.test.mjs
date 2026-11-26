@@ -394,8 +394,8 @@ function buildMockExpressionCatalogAndSchema({ nullableOptional = false } = {}) 
   return { catalog, schema };
 }
 
-test("CONTROL.expression has an explicit symbol and matches 58-type catalog parity", () => {
-  assert.equal(Object.keys(CIRCUIT).length, 26);
+test("CONTROL.expression has an explicit symbol and matches 59-type catalog parity", () => {
+  assert.equal(Object.keys(CIRCUIT).length, 27);
   assert.equal(Object.keys(CONTROL).length, 32);
   assert.ok(Object.hasOwn(CONTROL, "expression"));
 
@@ -412,7 +412,7 @@ test("CONTROL.expression has an explicit symbol and matches 58-type catalog pari
     ...Object.keys(CIRCUIT).map((type) => ({ type, category: "circuit" })),
     ...Object.keys(CONTROL).map((type) => ({ type, category: "control" })),
   ];
-  assert.equal(mockCatalog.length, 58);
+  assert.equal(mockCatalog.length, 59);
   assert.deepEqual(typesWithoutSymbol(mockCatalog), []);
   assert.deepEqual(symbolsWithoutType(mockCatalog), []);
 });

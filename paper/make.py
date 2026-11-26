@@ -37,6 +37,8 @@ ITEMS = [
     "numerical_oscillation",
     "buck_switching",
     "diode_bridge",
+    "pwm_accuracy",
+    "thyristor_rectifier",
     "fault_currents",
     "steady_state",
     "line_models",

@@ -122,7 +122,8 @@ pub(crate) struct Netlist {
     pub named_nodes: Vec<String>,
     /// Elements whose state follows from the solution (diodes).
     pub diodes: Vec<usize>,
-    /// Every element with two states (diodes and controlled switches).
+    /// Every element with two states (diodes, controlled switches and
+    /// thyristors).
     pub two_state: Vec<usize>,
     /// Branch currents of every component, in column order.
     pub currents: HashMap<String, Vec<Quantity>>,
@@ -630,6 +631,7 @@ fn build_parts(m: &model::Model, partitioning: model::Partitioning, record: bool
             Component::Switch(c) => switches::switch(&mut b, c),
             Component::Diode(c) => switches::diode(&mut b, c),
             Component::ControlledSwitch(c) => switches::controlled_switch(&mut b, c),
+            Component::Thyristor(c) => switches::thyristor(&mut b, c),
             Component::ThreePhaseSource(c) => sources::three_phase_source(&mut b, c),
             Component::CoupledRl(c) => passive::coupled_rl(&mut b, c),
             Component::PiLine(c) => lines::pi_line(&mut b, c),

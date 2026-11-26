@@ -896,3 +896,123 @@ fn control_breakdown_and_threads() {
         );
     }
 }
+
+/// Eight three-phase two-level PWM inverters (the bridge of
+/// `tests/pwm_inverter.rs`: switches with antiparallel diodes between
+/// +-375 V, an L filter of 0.2 ohm and 2 mH, modulation 0.89 fixed, carrier
+/// 2450 Hz shifted by 45 deg from one inverter to the next), each with a
+/// load of 3.2 ohm and 1 mH per phase on its bus, the buses joined into a
+/// ring by 50 km travelling-wave lines (169 us), and a 400 V source behind
+/// 0.02 ohm and 0.2 mH on the first bus.
+fn pwm_inverters_on_lines(h: f64, end: f64, switching: &str) -> Value {
+    let n = 8;
+    let seq = |r: f64, l: f64| json!({"type": "sequence", "r1_ohm": r, "l1_h": l, "r0_ohm": r, "l0_h": l});
+    let mut c = vec![
+        json!({"type": "three_phase_source", "name": "G0", "bus": "g", "line_voltage_rms_v": 400.0, "frequency_hz": F}),
+        json!({"type": "coupled_rl", "name": "ZG", "buses": ["g", "b0"], "impedance": seq(0.02, 0.2e-3)}),
+    ];
+    let mut controls = Vec::new();
+    for (ph, angle) in [("a", 0.0), ("b", -120.0), ("c", 120.0)] {
+        controls.push(json!({"type": "sine_wave", "name": format!("m_{ph}"), "amplitude": 0.89, "frequency_hz": F,
+            "phase_deg": 90.0 + 11.9 + angle}));
+    }
+    for k in 0..n {
+        let (dcp, dcn, sw, b) = (
+            format!("dcp{k}"),
+            format!("dcn{k}"),
+            format!("sw{k}"),
+            format!("b{k}"),
+        );
+        c.push(json!({"type": "voltage_source", "name": format!("EP{k}"), "nodes": [dcp, "gnd"], "waveform": {"type": "dc", "value": 375.0}}));
+        c.push(json!({"type": "voltage_source", "name": format!("EN{k}"), "nodes": [dcn, "gnd"], "waveform": {"type": "dc", "value": -375.0}}));
+        c.push(json!({"type": "coupled_rl", "name": format!("LF{k}"), "buses": [sw, b], "impedance": seq(0.2, 2e-3)}));
+        c.push(json!({"type": "coupled_rl", "name": format!("LD{k}"), "buses": [b, "gnd"], "impedance": seq(3.2, 1e-3)}));
+        c.push(json!({"type": "bergeron_line", "name": format!("L{k}"), "buses": [b, format!("b{}", (k + 1) % n)], "length_km": 50.0,
+            "per_km": {"type": "sequence", "r1_ohm_per_km": 0.03, "l1_h_per_km": 0.9e-3, "c1_f_per_km": 12.7e-9,
+                       "r0_ohm_per_km": 0.2, "l0_h_per_km": 3e-3, "c0_f_per_km": 7e-9}}));
+        let carrier = format!("carrier{k}");
+        controls.push(json!({"type": "triangle_wave", "name": carrier, "frequency_hz": 2450.0, "minimum": -1.0, "maximum": 1.0,
+            "phase_deg": 45.0 * k as f64}));
+        for ph in ["a", "b", "c"] {
+            let node = format!("{sw}.{ph}");
+            let (gp, gn) = (format!("gp{k}{ph}"), format!("gn{k}{ph}"));
+            c.push(json!({"type": "controlled_switch", "name": format!("SP{k}{ph}"), "nodes": [dcp, node], "gate": gp}));
+            c.push(json!({"type": "controlled_switch", "name": format!("SN{k}{ph}"), "nodes": [node, dcn], "gate": gn}));
+            c.push(json!({"type": "diode", "name": format!("DP{k}{ph}"), "nodes": [node, dcp]}));
+            c.push(json!({"type": "diode", "name": format!("DN{k}{ph}"), "nodes": [dcn, node]}));
+            controls.push(
+                json!({"type": "comparator", "name": gp, "inputs": [format!("m_{ph}"), carrier]}),
+            );
+            controls.push(
+                json!({"type": "comparator", "name": gn, "inputs": [carrier, format!("m_{ph}")]}),
+            );
+        }
+    }
+    json!({"format": "openkeito-model", "version": "0.5",
+        "simulation": {"time_step_s": h, "end_time_s": end, "switching": switching, "output_interval_steps": 10},
+        "components": c, "controls": controls,
+        "outputs": [{"type": "branch_current", "component": "LF0"}, {"type": "branch_current", "component": "LF7"},
+                    {"type": "bus_voltage", "bus": "b4"}]})
+}
+
+/// Issue #51, before it is begun: the time per step of eight PWM inverters
+/// joined by lines, divided at the lines and solved by 1, 2, 4 and 8
+/// threads, and the share of the steps that are solved stage by stage over
+/// the whole circuit (a switching action at the start of the step, a split
+/// step, or with "interpolated" every step: the zero crossings of the
+/// diodes are looked for in each). Pin the process to the P cores:
+/// `cmd /c start /b /wait /affinity C03C03 <test executable> --ignored --nocapture pwm_inverters_per_step`.
+#[test]
+#[ignore = "run by hand with --release"]
+fn pwm_inverters_per_step() {
+    const ROUNDS: usize = 3;
+    let end = 0.06;
+    println!("| switching | h (us) | partitioning | parts (largest) | threads | per step (us) | steps by parts | split steps | events |");
+    println!("|---|---|---|---|---|---|---|---|---|");
+    for (switching, h) in [
+        ("interpolated", 10e-6),
+        ("interpolated", 20e-6),
+        ("grid", 10e-6),
+        ("grid", 20e-6),
+    ] {
+        let model = pwm_inverters_on_lines(h, end, switching);
+        let mut first: Option<Vec<Vec<f64>>> = None;
+        for (partitioning, threads) in [
+            ("off", 1),
+            ("auto", 1),
+            ("auto", 2),
+            ("auto", 4),
+            ("auto", 8),
+            ("every_line", 1),
+            ("every_line", 2),
+            ("every_line", 4),
+            ("every_line", 8),
+        ] {
+            let mut best = f64::INFINITY;
+            let mut last = None;
+            for _ in 0..ROUNDS {
+                let (per_step, stats, rows) = timed(&model, partitioning, threads);
+                best = best.min(per_step);
+                last = Some((stats, rows));
+            }
+            let (stats, rows) = last.unwrap();
+            // The rows do not depend on the threads.
+            if threads == 1 {
+                first = Some(rows);
+            } else {
+                assert!(first.as_ref() == Some(&rows), "{partitioning} {threads}");
+            }
+            println!(
+                "| {switching} | {:.0} | {partitioning} | {} ({}) | {} | {:.2} | {:.1} % | {:.1} % | {} |",
+                h * 1e6,
+                stats.parts,
+                stats.largest_part_unknowns,
+                stats.threads,
+                best * 1e6,
+                100.0 * stats.steps_solved_by_parts as f64 / stats.steps as f64,
+                100.0 * stats.split_steps as f64 / stats.steps as f64,
+                stats.events.len()
+            );
+        }
+    }
+}

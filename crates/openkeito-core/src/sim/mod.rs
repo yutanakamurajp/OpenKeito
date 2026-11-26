@@ -177,7 +177,8 @@ pub struct Simulator {
     measured_signals: Vec<(usize, usize)>,
     /// Elements whose state follows from the solution (diodes).
     diodes: Vec<usize>,
-    /// Every element with two states (diodes and controlled switches).
+    /// Every element with two states (diodes, controlled switches and
+    /// thyristors).
     two_state: Vec<usize>,
     /// Elements whose operating point follows from the solution of each
     /// stage.
@@ -910,6 +911,7 @@ impl Simulator {
                 from + stages[k].time_fraction * (to - from)
             }
         };
+        stats.steps_solved_by_parts += 1;
         let (mut times, mut next_times) = ([t1; 2], [t2; 2]);
         for k in 0..count {
             times[k] = time(t0, t1, k);
@@ -1702,6 +1704,7 @@ impl Simulator {
         }
         let no_current = vec![0.0; self.diodes.len()];
         let mut lu = Lu::new(self.layout.parts.len());
+        let peaks = self.peaks;
         for pass in 0..2 {
             if pass == 1 {
                 if self.controls.is_empty() && !C::ENABLED {
@@ -1719,6 +1722,9 @@ impl Simulator {
                 for e in self.elements.iter_mut() {
                     e.restore();
                 }
+                // The first solution is not kept: its voltages and currents
+                // do not set the thresholds of the diode states.
+                self.peaks = peaks;
             }
             if !self.diodes.is_empty() {
                 let start = self.diode_states();
@@ -1798,9 +1804,14 @@ impl Simulator {
             changed = true;
             push_event(stats, t0, &name, action);
         }
-        changed |= self.read_signals(t0, stats).0;
-        if changed {
+        let (switched, value_changed) = self.read_signals(t0, stats);
+        changed |= switched;
+        if changed || value_changed {
+            // A changed value can be the gate of a thyristor, which changes
+            // its zero-crossing function (see `act`).
             self.crossings.start_valid = false;
+        }
+        if changed {
             for e in self.elements.iter_mut() {
                 e.after_action();
             }
@@ -1911,7 +1922,7 @@ impl Simulator {
         Ok(())
     }
 
-    /// Warning W271: diodes and controlled switches that the model leaves at
+    /// Warning W271: diodes, controlled switches and thyristors that the model leaves at
     /// a default resistance and that blocked more than one device can.
     fn warn_of_default_resistances(&self, stats: &mut RunStats) {
         let unit = |v: f64, unit: &str| {

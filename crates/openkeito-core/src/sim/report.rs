@@ -95,6 +95,12 @@ pub struct RunStats {
     pub instants_within_steps: u64,
     /// Time steps that were solved in parts because of such instants.
     pub split_steps: u64,
+    /// Time steps of a divided circuit whose parts were solved each on its
+    /// own (side by side on the threads): steps without a switching action
+    /// at their start and, with `switching` "interpolated", without
+    /// zero crossings to look for. Every other step is solved stage by stage
+    /// over the whole circuit. Not in the summary.
+    pub steps_solved_by_parts: u64,
     /// Time steps in which the limit of instants within one step was
     /// reached; the later instants moved to the next grid point (W270).
     pub instant_limit_steps: u64,

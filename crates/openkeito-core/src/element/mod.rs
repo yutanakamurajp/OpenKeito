@@ -108,6 +108,10 @@ pub enum SignalResponse {
     /// The element switched: its `stamp` changed. Recorded as an event and
     /// handled like any switching action.
     Switched(SwitchAction),
+    /// A thyristor that blocks a forward voltage is fired: the diode
+    /// states are settled now (as after a switching action), and the diode
+    /// logic turns it on and records the event.
+    Fired,
 }
 
 /// An element is `Send`: the parts of a divided circuit are solved on

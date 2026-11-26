@@ -37,8 +37,8 @@ The methods behind them are in [numerical-method.md](numerical-method.md).
 }
 ```
 
-The top level has `format` (`"openkeito-model"`), `version` (`"0.8"` is the current version;
-`"0.1"` to `"0.7"` are read as before), the free texts `name` and
+The top level has `format` (`"openkeito-model"`), `version` (`"0.9"` is the current version;
+`"0.1"` to `"0.8"` are read as before), the free texts `name` and
 `description`, `simulation`, `components`, `controls`, `outputs` and, for `openkeito scan`,
 `frequency_scan`. A field that the schema does not have is an error.
 
@@ -49,7 +49,7 @@ The top level has `format` (`"openkeito-model"`), `version` (`"0.8"` is the curr
 | `resistor`, `inductor`, `capacitor` | linear R, L and C between two nodes |
 | `voltage_source`, `current_source` | ideal sources with a waveform (`dc`, `sine`, `step`) |
 | `switch` | ideal switch with closing and opening times; opens at a current zero by default |
-| `diode`, `controlled_switch` | resistors with two values; the diode by its voltage and current, the switch by a gate signal |
+| `diode`, `controlled_switch`, `thyristor` | resistors with two values; the diode by its voltage and current, the switch by a gate signal, the thyristor as a diode that a gate signal must fire to turn on |
 | `nonlinear_resistor`, `nonlinear_inductor` | piecewise-linear characteristics: surge arresters, saturation |
 | `transformer` | single-phase two-winding transformer, with optional saturation |
 | `controlled_voltage_source`, `controlled_current_source` | sources whose value is a control signal |
@@ -67,7 +67,7 @@ The top level has `format` (`"openkeito-model"`), `version` (`"0.8"` is the curr
 | `grid_following_converter` | averaged inverter with its phase-locked loop, current control and limits |
 
 The control blocks are listed under [Controls](#controls). `openkeito components` is the
-complete list (26 components and 32 control blocks in format version `"0.8"`).
+complete list (27 components and 32 control blocks in format version `"0.9"`).
 
 ## Results of a run
 
@@ -196,7 +196,7 @@ only, and has neither a path nor a time in it.
   branch voltage `U(<name>)`.
 - Optional diagram layout overrides use a separate sidecar JSON file (`"format": "openkeito-layout"`,
   `"version": "0.1"`, with per-face `rails` `dx` and `items` `dx`/`dy` offsets), leaving the
-  model JSON (`"0.8"`), `openkeito schema` and `openkeito topology` unchanged. Unlisted
+  model JSON (`"0.9"`), `openkeito schema` and `openkeito topology` unchanged. Unlisted
   components fall back to the deterministic automatic layout.
 
 ## Conventions
@@ -222,6 +222,14 @@ only, and has neither a path nor a time in it.
   current has crossed zero, or whose voltage has become positive, changes its state at the
   next grid point, right after its output; the diode states are then settled together
   (see [numerical-method.md](numerical-method.md#diode-states)).
+- `thyristor` (nodes `[anode, cathode]`, format version `"0.9"`) is a diode that may only
+  turn on while its `gate` signal is >= 0.5: blocking a positive voltage, it turns on when
+  the gate fires it; fired while its voltage is negative, it turns on when the voltage
+  becomes positive, if the gate still fires it then. Once on it stays on, whatever the
+  gate, until its current is negative, and turns off as a diode does. It has the two
+  resistances of a diode with the same defaults, and no turn-off time and no holding
+  current. A pulse of the gate that starts and ends within one time step is not seen (as
+  for a `controlled_switch`).
 - Choosing the two resistances: the defaults are the order of one device at its rated
   current (a press-pack thyristor or diode, an IGBT module). From a data sheet,
   `on_resistance_ohm` = n·(V_T0 + r_T·I)/I for n devices in series with threshold voltage
@@ -229,13 +237,14 @@ only, and has neither a path nor a time in it.
   `off_resistance_ohm` = rated voltage / leakage current, or the grading resistance across
   a series connection. The conduction loss is R_on·I² and the leak loss V²/R_off. A resistor
   with two values has no threshold voltage, no switching loss and no snubber; add a source
-  or an RC branch where they matter. A `diode` or `controlled_switch` that the model leaves
+  or an RC branch where they matter. A `diode`, `controlled_switch` or `thyristor` that the model leaves
   at a default and that blocks more than 10 kV (more than one device does) is listed in
   warning W271 with its blocked voltage, V²/R_off and R_on·I; writing the values in the
   model, also the default ones, is taken as a decision and gives no warning.
 - `controls` is a list of control blocks (see [Controls](#controls)); the name of a block
   is the name of its output signal, and names are unique across components and blocks. A
-  `controlled_switch` is on while its `gate` signal is >= 0.5. Blocks are evaluated at every
+  `controlled_switch` is on while its `gate` signal is >= 0.5; a `thyristor` is fired while
+  its `gate` signal is >= 0.5. Blocks are evaluated at every
   grid point on the circuit solution there; their outputs act on the circuit over the next
   step. A signal output `{"type": "signal", "signal": "pwm"}` gives the column `S(pwm)`.
 - PWM edges fall on grid points: the duty realized differs from the reference by less than
@@ -245,7 +254,8 @@ only, and has neither a path nor a time in it.
   `interpolated` places every switching instant within its time step and splits the step
   there: a `switch`, a `fault` and a `step` waveform act at their times, a diode and a
   contact that opens at a current zero at the zero crossing, a `controlled_switch` at the
-  instant its gate signal crosses 0.5 (the controls are still evaluated at grid points: a
+  instant its gate signal crosses 0.5, a `thyristor` at the instant its gate fires it or
+  at the zero crossing of its voltage while fired (the controls are still evaluated at grid points: a
   constant reference gives exact PWM edges, a measured one is held for a step). The output
   rows stay on the grid; the times in `events.csv` and in the summary are the instants
   themselves, no longer grid points. The error of a switching instant falls from first to
@@ -291,7 +301,7 @@ only, and has neither a path nor a time in it.
   the component that acts and the time; a contact that opens at a current zero opens
   later than its command, so a loop that lasts only until then is not seen. A component
   with a resistance, an inductance or a capacitance holds its nodes: a `diode` and a
-  `controlled_switch` by their off resistance, and a node between capacitors has the
+  `controlled_switch` (or `thyristor`) by their off resistance, and a node between capacitors has the
   voltage that their charges give it.
 - Format version `"0.2"` adds diodes, controlled switches, controls, signal outputs and
   `output_interval_steps`; `"0.3"` adds the three-phase components below, `bus_voltage`
@@ -307,8 +317,9 @@ only, and has neither a path nor a time in it.
   `zero_sequence_inverted` on `three_phase_ideal_transformer`; `"0.7"` adds the
   `piecewise_linear` control block, signal-name limits on `integrator`, `lag`, `pi` and
   `limiter`, `anti_windup` (`"conditional"` or `"state"`) on `pi`, and
-  `"initialization": "exclude"` on circuit components; `"0.8"` (the current version) adds
-  the `expression` control block. Models of an older version are read as before.
+  `"initialization": "exclude"` on circuit components; `"0.8"` adds the `expression`
+  control block; `"0.9"` (the current version) adds the `thyristor`. Models of an older
+  version are read as before.
 
 ## Three-phase circuits
 
@@ -667,7 +678,7 @@ zero-sequence current (its reactor has 1000 times the impedance for it).
 `openkeito scan model.json --out dir` computes, at each frequency, the impedances of the
 network with every source set to zero (voltage sources shorted, current sources open,
 three-phase sources reduced to their internal impedance), switches in their initial state,
-faults not started and diodes and controlled switches off. For `nodes` it gives the self
+faults not started and diodes, controlled switches and thyristors off. For `nodes` it gives the self
 impedance of each node (`Zmag(n)` in ohm, `Zdeg(n)` in degrees) and the mutual impedance of
 each pair (`Zmag(n;m)`: the voltage at n per ampere into m); for `buses` the positive-,
 negative- and zero-sequence impedances (`Z1mag(b)`, `Z2mag(b)`, `Z0mag(b)` and angles), the
@@ -810,7 +821,7 @@ errors, with W warnings.
 | E160 | validation | a model without components |
 | E170–E173 | validation | controls: a signal that does not exist, a loop without a state, inputs and signs, a measurement that names no column |
 | E180–E183, W183–W185 | validation | steady-state initialization: sources that are not sines of one frequency, components without a phasor, excluding all components or disconnecting/ungrounding the steady-state subcircuit (E183); controls start on their own (W183); no sine source (W184); series component excluded from the phasor solution (W185) |
-| E190, E191, E194, W192, W193 | validation, scan | the frequency scan. W192 (diodes and controlled switches are taken as off) is reported by `validate`, `run` and `scan` alike for a model that has a `frequency_scan` and such components; W193 names the frequencies at which the network is singular |
+| E190, E191, E194, W192, W193 | validation, scan | the frequency scan. W192 (diodes, controlled switches and thyristors are taken as off) is reported by `validate`, `run` and `scan` alike for a model that has a `frequency_scan` and such components; W193 names the frequencies at which the network is singular |
 | E200–E205 | run | the equations are singular (E200; E203 for the phasor solution), a value is not finite (E201), the diode states or the operating points did not settle (E202, E205), a component cannot be solved (E204) |
 | E210 | run | writing the result failed |
 | W220, W221 | run | the waveforms left the steady state (W220); a switch still waits for a current zero at the end (W221) |
@@ -818,7 +829,7 @@ errors, with W warnings.
 | E240–E244, W240 | validation | control blocks and controlled sources: names of signals, transfer functions, time series, lookup tables (`piecewise_linear`), `expression` blocks (E243: syntax errors, undefined variables or functions, wrong argument counts, variable conflicts), signals that a component offers (E244); a controlled source without `steady_state` (W240) |
 | E250–E252 | run | a loop of control blocks did not settle; a control signal is not finite; a controller callback failed or returned a non-finite value |
 | E260–E264, W260, W261 | validation, run | nonlinear characteristics and saturation |
-| W270, W271 | run | more switching instants within a step than are placed; default diode resistances that block more than one device does |
+| W270, W271 | run | more switching instants within a step than are placed; default resistances of diodes, controlled switches and thyristors that block more than one device does |
 | E280–E282, W280 | validation, run | synchronous machines: order of reactances and time constants, q-axis windings; an unbalanced start |
 | E290, W290–W293 | validation | grid-following converters: names of their signals, time step against the current control, operating point and references, dc voltage |
 | E300, W300 | command | the request: a file that cannot be read or written, an output directory that already holds a result (or a `topology.json`), a batch or schedule file given to `topology`; failed to write `model.json` into a batch case directory (W300) |

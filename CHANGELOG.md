@@ -3,6 +3,30 @@
 OpenKeito の変更履歴。Conventional Commits 1.0.0 のコミットをもとに書き、バージョンは SemVer 2.0.0 に従う。
 バージョンの正は `Cargo.toml` の `[workspace.package]` の `version`。手順は `AGENTS.md` の「Versions and releases」を参照。
 
+## 0.14.0 (2026-11-27)
+
+M11 段 1（#49 サイリスタ、#48 三相 PWM インバータの大きい刻みの精度の記録、#51 の着手前の計測）: ゲートで点弧し電流零点で消弧する部品 `thyristor` とモデル形式 `0.9` を足し、三相 2 レベル PWM インバータの刻みごとの誤差と、インバータ 8 台の系統の 1 刻みの時間を記録した。`0.1`〜`0.8` の既存モデルはそのまま読め、v0.13.0 の例 23 件の実行結果 CSV（55 ファイル）は 0.13.0 とバイト単位で同じ。
+
+### Features
+
+* **model, core:** モデル形式 `0.9` を追加: 部品 `thyristor`（`nodes` は [アノード, カソード]、`gate`、ダイオードと同じ 2 値抵抗と既定値）。ダイオードの状態決定に「ゲートが点弧している（≥ 0.5）ときだけ順方向で導通に替わる」条件を足し、消弧はダイオードと同じ。`interpolated` ではゲートが点弧し始める・やめる時刻を preview と二分探索で刻みの中に置く。`0.8` 以下での使用は `E102`。6 パルス位相制御変換器のテスト（Mohan ほか 6 章の式）で α = 15・30・60・150° の平均直流電圧の相対誤差 1.3e-4 以内、重なりの時間の差 0.48 µs 以内、点弧時刻の差 7e-18 s（[crates/openkeito-core/tests/thyristor.rs](crates/openkeito-core/tests/thyristor.rs)）
+* **web, examples:** サイリスタの図記号（IEC 60617 の逆阻止三端子サイリスタ、カソード側ゲート。記号 59 種）とダイオードと同じ off/on の状態表示、例 `examples/thyristor_rectifier.json`（α = 30°、平均 452.7 V、教科書 452.8 V。`web/examples.json` は 24 例）を追加
+
+### Bug Fixes
+
+* **core:** t = 0 で制御を最初に評価する前の（捨てる）解の最大電圧・電流をダイオードのしきい値（ピークの 1e-6）に数えないようにした（点弧前のサイリスタが阻止した電圧でしきい値が 17 V になっていた。既存の例の結果は変わらない）
+* **core:** 逆電圧のサイリスタにゲートが点弧し始めた（やめた）とき、零点の関数の区間の始めの値を取り直すようにした（刻みの中の時刻でも格子点でも）。取り直さないと始めの値が点弧前のまま残り、同じ刻みに電圧の零点があると台形則では零点が格子点に置かれていた（100 V・50 Hz、10 Ω、30 µs で 20.000 ms の点弧が 20.010 ms。2S-DIRK は段の値から置けていた）。テスト 2 件（点弧が零点 20 ms から 3.3e-11 s 以内、順電圧になる前にゲートが切れると導通しない）を追加
+
+### Tests & Performance
+
+* **core:** 三相 2 レベル PWM インバータ（`controlled_switch` 6 個と逆並列 `diode` 6 個、搬送波 2450 Hz、変調率 0.89 固定と dq の PI 電流制御、デッドタイム 0・2 µs）を 1〜25 µs で解き、0.25 µs の `interpolated` と比べるテストを追加。変調率固定・`interpolated`・20 µs で搬送波 1 周期平均の最大差は定格ピーク比 1.0e-4、基本波の振幅 6.5e-5〜8.7e-5、位相 9e-4〜1.0e-3°（`grid` 20 µs は 0.14・0.11・5.0°）。25 µs は最も狭いパルス 22.4 µs が見えず誤差が跳ぶ（ふだんのテストで 25 ms の 1149 イベントのうち 14 個が落ちることを確かめる）。PI 電流制御は格子点の標本化で 1 次（20 µs で振幅 1.2 %、位相 0.51°）（[crates/openkeito-core/tests/pwm_inverter.rs](crates/openkeito-core/tests/pwm_inverter.rs)）
+* **core:** `benchmark.rs` に `pwm_inverters_per_step`（インバータ 8 台を `bergeron_line` で輪につないだ系統の 1 刻みの時間）と `RunStats::steps_solved_by_parts`（summary には出さない）を追加。`interpolated` では部分ごとに解けた刻みが 0 %、`grid` でも 7〜27 % で、スレッドを増やしても速くならない（#51 の着手前の計測）
+
+### Documentation & Paper
+
+* **paper:** `paper/figures/pwm_accuracy.py`（刻みごとの誤差と 20 µs の波形）と `paper/figures/thyristor_rectifier.py`（α ごとの平均直流電圧の誤差と `grid` の 1 次の誤差）を `paper/make.py` と [python/tests/test_paper_figures.py](python/tests/test_paper_figures.py) に追加
+* **docs:** `docs/model.md`（形式 `0.9`、`thyristor`）、`docs/numerical-method.md`（サイリスタ、大きい刻みの三相 PWM インバータ）、`docs/performance.md`（PWM インバータの計算時間、8 台の系統）、`README.md`・`web/README.md`・`paper/README.md`・`scripts/README.md`（IEC 60617 照合表 59 種）・`AGENTS.md`・`plan.md`（M11 段 1 の結果と 9 章の未決）を更新
+
 ## 0.13.0 (2026-11-25)
 
 M10 段 2〜4（AI 制御用 Python コールバック口、結果不変ホットパス整理、ONNX 設計・OpenEMT 比較計画・RMS 設計整理、および M8 残課題・論文連携図表の整備）: `openkeito.run` から Python の制御関数を毎ステップ／指定の制御周期で呼べる外部制御インターフェースと診断 `E252` を追加し、既存結果を変えないホットパス整理と制御負荷計測、`paper/` の検証図表、Firefox 動作確認および IEC 60617 チェックリスト 58 種更新をまとめた。モデル形式の版は `0.8` のまま、`0.1`〜`0.8` の既存モデルはそのまま読め、v0.12.0 の例 23 件の実行結果 CSV（55 ファイル）は 0.12.0 とバイト単位で同じ。

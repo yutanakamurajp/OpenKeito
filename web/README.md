@@ -161,7 +161,7 @@ Checked in Chromium 150 and Firefox 155 on Windows 11.
     drawn, with one line for all the components between two of them; the tab says so.
 - **Model.** Switch between `JSON` (a text area with line numbers) and `Form` mode (backed by
   the same JSON text as the single source of truth). `Form` mode builds structured parameter
-  forms from the 58-type catalog and JSON Schema (with units, descriptions, sign
+  forms from the 59-type catalog and JSON Schema (with units, descriptions, sign
   conventions, and `<datalist>` candidates for nodes, buses, and signals), lets you add or
   remove components, controls, and outputs, keeps Undo/Redo history, and shows `validate`
   diagnostics inline beside the matching field. 300 ms after the last edit the text goes to
@@ -237,6 +237,7 @@ database line by line.
 | `switch` | make contact | IEC |
 | `diode` | triangle and bar, anode at `nodes[0]` | IEC |
 | `controlled_switch` | make contact with a dashed link to an operating device | composed |
+| `thyristor` | triangle and bar with a gate at the cathode side, anode at `nodes[0]` | IEC |
 | `transformer` | two overlapping circles, the ends of each winding on its side | IEC |
 | `three_phase_transformer` | two overlapping circles; a star point that is brought out leaves below its winding | IEC |
 | `three_phase_ideal_transformer` | two overlapping circles with the arrow of adjustability | composed |
@@ -255,7 +256,7 @@ database line by line.
 | control blocks (32) | rectangle with a mark: `Σ`, `∫`, `K`, `PI`, `1/(1+sT)`, `G(s)`, `×`, `÷`, `f(u)`, `PLL`, `abc/dq0`, a small curve for a limiter, a dead band, a step, a ramp, a sine, a triangle wave, a time series, a piecewise linear curve | |
 
 Every type of `openkeito components` has an entry in `CIRCUIT` or `CONTROL` of
-`src/symbols.js` (26 and 32). A type without one is drawn as a dashed box with its name;
+`src/symbols.js` (27 and 32). A type without one is drawn as a dashed box with its name;
 the tests and `build.mjs` fail while there is one, so a new component gets its symbol with
 it.
 
@@ -387,6 +388,7 @@ browser has a resolution of 0.1 ms, so the small numbers are rough.
 
 `transition_three_times` (145 000 steps, 7 251 rows) was added after this measurement; it is
 the longest example and takes 0.5 s when `build.mjs` runs it in Node on the same machine.
+`thyristor_rectifier` (5 000 steps, 5 001 rows) was added after it too.
 
 The clock: a run reads it twice per output row. Where a model has cheap steps and writes
 every one of them, that is a visible part of a run (`rectifier`: 125 ms with the clock, 85 ms
@@ -400,7 +402,7 @@ configuration, build image, headers, serving, limits; Wrangler: `pages`; compres
 of this has been run: deploying is done by the maintainer.
 
 What the page needs from a host is little: static files, `text/javascript` for `.js`, ideally
-`application/wasm` for `.wasm`. `web/dist` is 50 files and 4.29 MB (23 examples; limits of
+`application/wasm` for `.wasm`. `web/dist` is 51 files and 4.44 MB (24 examples; limits of
 Pages: 20 000 files, 25 MiB per file).
 
 ### Direct upload (recommended)
@@ -450,7 +452,7 @@ compiled files can be cached, is the recommendation.
 - **Compression.** Cloudflare compresses responses itself (Gzip, Brotli or Zstandard, by what
   the browser accepts), and `application/wasm`, JavaScript, JSON, CSS and HTML are among the
   types it compresses. Do not upload compressed files and do not set `Content-Encoding`. The
-  module is 3.80 MB and 0.95 MB compressed.
+  module is 3.96 MB and 0.96 MB compressed.
 - **Caching.** Leave it to Pages: it sends an `ETag` and revalidates, and a new deploy is
   visible at once. The file names carry no hash, so a long `max-age` would be wrong.
 - **`_headers`** is not required. The one in `web/` (copied into `web/dist`) adds a content

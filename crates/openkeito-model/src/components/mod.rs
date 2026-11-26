@@ -310,6 +310,7 @@ component_types! {
     Switch,
     Diode,
     ControlledSwitch,
+    Thyristor,
     ThreePhaseSource,
     CoupledRl,
     PiLine,

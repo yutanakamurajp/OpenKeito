@@ -45,7 +45,8 @@ def test_every_item_wrote_its_files(out):
     items = [line.split(":", 1)[0] for line in listed.stdout.splitlines() if line.strip()]
     assert numbers.get("_settings") == {"quick": True}
     assert [k for k in numbers if k != "_settings"] == items
-    for name in ("integration_order", "numerical_oscillation", "buck_switching", "diode_bridge", "fault_currents",
+    for name in ("integration_order", "numerical_oscillation", "buck_switching", "diode_bridge", "pwm_accuracy",
+                 "thyristor_rectifier", "fault_currents",
                  "steady_state", "line_models", "machine_short_circuit", "converter_response", "controls_v07",
                  "expression_control", "ai_control", "wecc_ibr", "ieee39_diagram", "performance"):
         for suffix in ("pdf", "png"):
@@ -83,6 +84,25 @@ def test_switching_within_the_step_removes_the_first_order_error(out):
     assert table[("interpolated", "2s-dirk", "2e-06")] < 1e-5
     ratio = table[("interpolated", "2s-dirk", "1e-05")] / table[("interpolated", "2s-dirk", "5e-06")]
     assert 3.8 < ratio < 4.2
+
+
+def test_pwm_inverter_and_thyristor_converter(out):
+    pwm = {(r["switching"], r["time_step_s"]): r for r in rows(out / "pwm_accuracy.csv")}
+    # 20 us within the step: 1.05e-2 A of carrier average (1.0e-4 of the
+    # rated peak), amplitude 8.7e-5, phase 1.0e-3 deg (dead time 2 us).
+    within = pwm[("interpolated", "2e-05")]
+    assert float(within["carrier_average_error_of_rated_peak"]) < 1e-3
+    assert float(within["fundamental_amplitude_error"]) < 5e-3
+    assert float(within["fundamental_phase_error_deg"]) < 0.2
+    assert float(pwm[("grid", "2e-05")]["max_carrier_average_error_a"]) > 100 * float(within["max_carrier_average_error_a"])
+    for r in rows(out / "thyristor_rectifier.csv"):
+        if r["switching"] == "interpolated":
+            assert abs(float(r["relative_error"])) < 1e-3, r
+            assert float(r["largest_overlap_deviation_s"]) < 5e-7, r
+    steps = {(r["switching"], r["time_step_s"]): float(r["error_v"]) for r in rows(out / "thyristor_rectifier_steps.csv")}
+    # At grid points the firing waits for half a step on average: first order.
+    assert 1.8 < steps[("grid", "4e-05")] / steps[("grid", "2e-05")] < 2.2
+    assert abs(steps[("interpolated", "2e-05")]) < 0.05
 
 
 def test_three_phase_numbers(out):

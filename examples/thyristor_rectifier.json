@@ -1,0 +1,45 @@
+{
+  "format": "openkeito-model",
+  "version": "0.9",
+  "name": "six-pulse thyristor rectifier",
+  "description": "400 V, 50 Hz source with 1 mH per phase feeding six thyristors fired at alpha = 30 deg by pulses of 120 deg (a sine wave against 0.5 per thyristor), and 9 ohm with 0.1 H on the DC side, starting from rest (the DC current rises with L/R = 11 ms to about 50 A). Textbook average: U_d = (3 sqrt 2/pi) V_LL cos(alpha) - (3/pi) w L_s I_d = 467.8 - 15.0 V at 50 A, an overlap of about 5.9 deg (325 us; the run ends at 49.7 A with 323 us). Thyristors are numbered in the order of firing; T1 turns on 60 deg after the zero crossing of phase a. With switching \"interpolated\" the firing and the end of each commutation lie between grid points (see the events).",
+  "simulation": {
+    "time_step_s": 2e-05,
+    "end_time_s": 0.1,
+    "switching": "interpolated"
+  },
+  "components": [
+    {"type": "three_phase_source", "name": "G1", "bus": "ac", "line_voltage_rms_v": 400.0, "frequency_hz": 50.0, "angle_deg": -90.0, "impedance": {"type": "sequence", "r1_ohm": 0.0, "l1_h": 0.001, "r0_ohm": 0.0, "l0_h": 0.001}},
+    {"type": "thyristor", "name": "T1", "nodes": ["ac.a", "p"], "gate": "g1"},
+    {"type": "thyristor", "name": "T2", "nodes": ["n", "ac.c"], "gate": "g2"},
+    {"type": "thyristor", "name": "T3", "nodes": ["ac.b", "p"], "gate": "g3"},
+    {"type": "thyristor", "name": "T4", "nodes": ["n", "ac.a"], "gate": "g4"},
+    {"type": "thyristor", "name": "T5", "nodes": ["ac.c", "p"], "gate": "g5"},
+    {"type": "thyristor", "name": "T6", "nodes": ["n", "ac.b"], "gate": "g6"},
+    {"type": "resistor", "name": "RD", "nodes": ["p", "m"], "resistance_ohm": 9.0},
+    {"type": "inductor", "name": "LD", "nodes": ["m", "n"], "inductance_h": 0.1}
+  ],
+  "controls": [
+    {"type": "constant", "name": "half", "value": 0.5},
+    {"type": "sine_wave", "name": "s1", "amplitude": 1.0, "frequency_hz": 50.0, "phase_deg": -30.0},
+    {"type": "comparator", "name": "g1", "inputs": ["s1", "half"]},
+    {"type": "sine_wave", "name": "s2", "amplitude": 1.0, "frequency_hz": 50.0, "phase_deg": -90.0},
+    {"type": "comparator", "name": "g2", "inputs": ["s2", "half"]},
+    {"type": "sine_wave", "name": "s3", "amplitude": 1.0, "frequency_hz": 50.0, "phase_deg": -150.0},
+    {"type": "comparator", "name": "g3", "inputs": ["s3", "half"]},
+    {"type": "sine_wave", "name": "s4", "amplitude": 1.0, "frequency_hz": 50.0, "phase_deg": -210.0},
+    {"type": "comparator", "name": "g4", "inputs": ["s4", "half"]},
+    {"type": "sine_wave", "name": "s5", "amplitude": 1.0, "frequency_hz": 50.0, "phase_deg": -270.0},
+    {"type": "comparator", "name": "g5", "inputs": ["s5", "half"]},
+    {"type": "sine_wave", "name": "s6", "amplitude": 1.0, "frequency_hz": 50.0, "phase_deg": -330.0},
+    {"type": "comparator", "name": "g6", "inputs": ["s6", "half"]}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "p"},
+    {"type": "node_voltage", "node": "n"},
+    {"type": "branch_current", "component": "LD"},
+    {"type": "branch_current", "component": "T1"},
+    {"type": "branch_current", "component": "T4"},
+    {"type": "signal", "signal": "g1"}
+  ]
+}

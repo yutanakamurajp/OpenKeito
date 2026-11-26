@@ -322,11 +322,11 @@ function withMockDom(fn) {
     });
 }
 
-test("InspectorPanel loads all 58 catalog types, edits rlc.json fields, and emits valid JSON", async () => {
+test("InspectorPanel loads all 59 catalog types, edits rlc.json fields, and emits valid JSON", async () => {
   const wasm = await loadWasm();
   const catalog = JSON.parse(wasm.components());
   const schema = JSON.parse(wasm.schema());
-  assert.equal(catalog.length, 58);
+  assert.equal(catalog.length, 59);
 
   await withMockDom(async (dom) => {
     const root = dom.document.createElement("div");
@@ -340,8 +340,8 @@ test("InspectorPanel loads all 58 catalog types, edits rlc.json fields, and emit
     panel.setCatalog(catalog, schema);
     panel.setModelText(rlcText);
 
-    // Header selects contain all 26 circuit components and 32 control blocks.
-    assert.equal(panel.addComponentSelect.querySelectorAll("option").length, 26);
+    // Header selects contain all 27 circuit components and 32 control blocks.
+    assert.equal(panel.addComponentSelect.querySelectorAll("option").length, 27);
     assert.equal(panel.addControlSelect.querySelectorAll("option").length, 32);
 
     // Simulation fields rendered with units and enums.

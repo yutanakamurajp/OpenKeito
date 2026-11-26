@@ -380,11 +380,20 @@ impl Simulator {
                 if !e.would_switch(&w.preview) {
                     continue;
                 }
-                if let SignalResponse::Switched(action) = e.read_signals(&w.preview) {
-                    changed = true;
-                    let name = e.name().to_string();
-                    push_event(stats, t, &name, action);
-                    self.touch(i);
+                match e.read_signals(&w.preview) {
+                    SignalResponse::Switched(action) => {
+                        changed = true;
+                        let name = e.name().to_string();
+                        push_event(stats, t, &name, action);
+                        self.touch(i);
+                    }
+                    // The diode states are settled below.
+                    SignalResponse::Fired => changed = true,
+                    // A thyristor that its gate starts or stops firing
+                    // changes its zero-crossing function: the value at the
+                    // start of the next part is taken again.
+                    SignalResponse::ValueChanged => self.crossings.start_valid = false,
+                    SignalResponse::Unchanged => {}
                 }
             }
         }

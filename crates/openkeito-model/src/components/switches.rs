@@ -1,5 +1,5 @@
 //! Switching components: the time-controlled switch, the diode, the switch
-//! driven by a control signal and the fault.
+//! driven by a control signal, the thyristor and the fault.
 
 use std::collections::BTreeSet;
 
@@ -338,7 +338,86 @@ impl ComponentSpec for ControlledSwitch {
     }
 }
 
-/// The two resistances of a diode or controlled switch.
+/// Thyristor: a diode that turns on only while its gate signal fires it.
+/// Modelled as a resistor with two values, like the diode. `nodes` is
+/// [anode, cathode], so the forward current is a positive branch current.
+///
+/// A blocking thyristor turns on when its voltage is positive while the
+/// gate signal is >= 0.5; a gate that fires during a reverse voltage turns
+/// it on when the voltage becomes positive, if the gate still fires it
+/// then. A conducting thyristor stays on, whatever the gate, until its
+/// current is negative (as a diode). The signal computed at a grid point
+/// fires the thyristor over the following time step; with
+/// `simulation.switching` = "interpolated" the instant at which the gate
+/// starts or stops firing is placed within the step. No turn-off time and
+/// no holding current.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Thyristor {
+    pub name: String,
+    /// [anode, cathode].
+    pub nodes: [String; 2],
+    /// Name of the control signal that fires the thyristor (>= 0.5).
+    pub gate: String,
+    /// Resistance while conducting, in ohm. Must be > 0. Default 1e-3.
+    #[serde(default = "default_on_resistance")]
+    #[schemars(with = "f64")]
+    pub on_resistance_ohm: TwoStateResistance,
+    /// Resistance while blocking, in ohm. Must be greater than
+    /// on_resistance_ohm. Default 1e6.
+    #[serde(default = "default_off_resistance")]
+    #[schemars(with = "f64")]
+    pub off_resistance_ohm: TwoStateResistance,
+    /// Whether this component participates in `simulation.initialization = "steady_state"`.
+    #[serde(default, skip_serializing_if = "ComponentInitialization::is_include")]
+    pub initialization: ComponentInitialization,
+}
+
+impl ComponentSpec for Thyristor {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn type_name(&self) -> &'static str {
+        "thyristor"
+    }
+    fn since(&self) -> &'static str {
+        "0.9"
+    }
+    fn two_nodes(&self) -> Option<&[String; 2]> {
+        Some(&self.nodes)
+    }
+    fn check_parameters(&self, p: &str, d: &mut Vec<Diagnostic>) {
+        check_resistances(
+            &self.name,
+            self.on_resistance_ohm.ohm(),
+            self.off_resistance_ohm.ohm(),
+            p,
+            d,
+        );
+    }
+    fn signals(&self) -> Vec<(&'static str, &str)> {
+        vec![("gate", self.gate.as_str())]
+    }
+    fn steady_state(&self) -> SteadyState {
+        SteadyState::NoPhasor
+    }
+    fn info() -> ComponentInfo {
+        ComponentInfo {
+            type_name: "thyristor",
+            category: "circuit",
+            summary: "Thyristor as a resistor with two values: a diode that turns on only while its gate signal is >= 0.5. It turns on when its voltage is positive and the gate fires it, and stays on, whatever the gate, until its current is negative. The signal at a grid point fires it over the next time step; with switching \"interpolated\" the instant at which the gate starts or stops firing lies within the step. No turn-off time or holding current.",
+            sign_convention: "nodes is [anode, cathode]; the forward current is a positive branch current. The element is a resistor of on_resistance_ohm or off_resistance_ohm.",
+            parameters: with({
+                let mut v = vec![p("gate", "", true, "Name of the control signal (a control block) that fires the thyristor while >= 0.5.")];
+                v.extend(resistances());
+                v
+            }),
+            example: json!({"type": "thyristor", "name": "T1", "nodes": ["n1", "sw"], "gate": "fire", "on_resistance_ohm": 1e-3, "off_resistance_ohm": 1e6}),
+        }
+    }
+}
+
+/// The two resistances of a diode, controlled switch or thyristor.
 fn check_resistances(name: &str, on: f64, off: f64, p: &str, d: &mut Vec<Diagnostic>) {
     let mut range =
         |field: &str, value: f64, what: &str| range_error(d, p, name, field, value, what);

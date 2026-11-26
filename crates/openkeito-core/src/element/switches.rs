@@ -1,6 +1,6 @@
 //! Switching elements: the contact that opens at a current zero, the
-//! time-controlled switch, the fault and the resistor with two values (diode
-//! and controlled switch).
+//! time-controlled switch, the fault and the resistor with two values (diode,
+//! controlled switch and thyristor).
 
 use super::{
     add, instant, phasor, stamp_branch_current, stamp_conductance, volt, Element, Node,
@@ -311,8 +311,9 @@ impl Element for Fault {
     }
 }
 
-/// Resistor with two values: a diode (state follows from the solution) or a
-/// switch driven by a gate signal.
+/// Resistor with two values: a diode (state follows from the solution), a
+/// switch driven by a gate signal, or a thyristor (a diode that may only
+/// turn on while its gate signal fires it).
 pub(crate) struct TwoState {
     pub name: String,
     pub a: Node,
@@ -322,6 +323,11 @@ pub(crate) struct TwoState {
     pub on: bool,
     /// Index of the gate signal; `None` for a diode.
     pub gate: Option<usize>,
+    /// A thyristor: the gate only allows the turn-on (`fired`); otherwise
+    /// the state follows from the solution as that of a diode.
+    pub latching: bool,
+    /// For a thyristor: the gate signal last read was >= 0.5.
+    pub fired: bool,
     /// Current at the end of the last completed step.
     pub i_last: f64,
     /// `i_last` stored by `save`.
@@ -420,6 +426,25 @@ impl Element for TwoState {
             return SignalResponse::Unchanged;
         };
         let on = signals[gate] >= 0.5;
+        if self.latching {
+            // A thyristor fired while it blocks a forward voltage turns on
+            // now: the diode logic (`settle`, `inconsistent`) turns it on
+            // and records the event. Fired while reverse-biased, it turns on
+            // when its voltage becomes positive while the gate still fires
+            // it. A change of the gate alone is a changed value: at t = 0,
+            // where the voltage before the gate is not known, the states are
+            // then settled again.
+            let changed = on != self.fired;
+            self.fired = on;
+            if on && !self.on && self.i_last > 0.0 {
+                return SignalResponse::Fired;
+            }
+            return if changed {
+                SignalResponse::ValueChanged
+            } else {
+                SignalResponse::Unchanged
+            };
+        }
         if on == self.on {
             return SignalResponse::Unchanged;
         }
@@ -431,32 +456,45 @@ impl Element for TwoState {
         })
     }
     fn inconsistent(&self, x: &[f64], tol: &Tolerance) -> bool {
-        if self.gate.is_some() {
+        if self.gate.is_some() && !self.latching {
             return false;
         }
         let v = volt(x, self.a) - volt(x, self.b);
         if self.on {
             self.g_on * v < -tol.current
         } else {
-            v > tol.voltage
+            // A thyristor that its gate does not fire keeps blocking.
+            (!self.latching || self.fired) && v > tol.voltage
         }
     }
     fn flip(&mut self) {
         self.on = !self.on;
     }
     fn would_switch(&self, signals: &[f64]) -> bool {
-        self.gate
-            .is_some_and(|gate| (signals[gate] >= 0.5) != self.on)
+        self.gate.is_some_and(|gate| {
+            let on = signals[gate] >= 0.5;
+            if self.latching {
+                // The instants at which the gate starts or stops firing,
+                // also while the thyristor conducts: one that turns off
+                // later in the same step must find `fired` up to date.
+                on != self.fired
+            } else {
+                on != self.on
+            }
+        })
     }
     fn event_count(&self) -> usize {
-        usize::from(self.gate.is_none())
+        usize::from(self.gate.is_none() || self.latching)
     }
     fn event_functions(&self, x: &[f64], tol: &Tolerance, g: &mut [[f64; 2]]) {
         // As `inconsistent`: the current while conducting, the reverse
-        // voltage while blocking.
+        // voltage while blocking (never crossed by a thyristor that its gate
+        // does not fire).
         let v = volt(x, self.a) - volt(x, self.b);
         g[0] = if self.on {
             [self.g_on * v, tol.current]
+        } else if self.latching && !self.fired {
+            [f64::INFINITY, 0.0]
         } else {
             [-v, tol.voltage]
         };

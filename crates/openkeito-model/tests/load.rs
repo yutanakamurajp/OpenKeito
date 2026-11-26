@@ -216,7 +216,7 @@ fn version_0_1_does_not_have_the_additions_of_0_2() {
         assert!(e[0].message.contains(what), "{}", e[0].message);
     }
     assert!(e[0].hint.contains("\"version\": \"0.2\""));
-    let e = errors(&BUCK.replace("\"0.2\"", "\"0.9\""));
+    let e = errors(&BUCK.replace("\"0.2\"", "\"0.10\""));
     assert_eq!(e[0].code, "E101");
     assert!(e[0].hint.contains("0.4"));
 }
@@ -2163,10 +2163,10 @@ fn expression_block_reports_e243_with_paths_and_hints() {
 #[test]
 fn catalog_and_schema_include_version_0_8_additions() {
     let catalog = openkeito_model::component_catalog();
-    assert_eq!(catalog.len(), 58);
+    assert_eq!(catalog.len(), 59);
     let circuit_count = catalog.iter().filter(|c| c.category == "circuit").count();
     let control_count = catalog.iter().filter(|c| c.category == "control").count();
-    assert_eq!(circuit_count, 26);
+    assert_eq!(circuit_count, 27);
     assert_eq!(control_count, 32);
 
     let fn_pos = catalog
@@ -2197,4 +2197,56 @@ fn catalog_and_schema_include_version_0_8_additions() {
 
     let schema = schema_val.to_string();
     assert!(schema.contains("expression"), "schema lacks expression");
+}
+
+const THYRISTOR: &str = r#"{
+  "format": "openkeito-model",
+  "version": "0.9",
+  "simulation": {"time_step_s": 1e-5, "end_time_s": 1e-3},
+  "components": [
+    {"type": "voltage_source", "name": "E1", "nodes": ["a", "gnd"], "waveform": {"type": "sine", "amplitude": 100.0, "frequency_hz": 50.0}},
+    {"type": "thyristor", "name": "T1", "nodes": ["a", "k"], "gate": "fire"},
+    {"type": "resistor", "name": "R1", "nodes": ["k", "gnd"], "resistance_ohm": 10.0}
+  ],
+  "controls": [{"type": "step", "name": "fire", "time_s": 2e-3, "after": 1.0}],
+  "outputs": [{"type": "branch_current", "component": "T1"}]
+}"#;
+
+#[test]
+fn a_thyristor_is_an_addition_of_version_0_9() {
+    let loaded = load_str(THYRISTOR).unwrap();
+    match &loaded.model.components[1] {
+        openkeito_model::Component::Thyristor(t) => {
+            assert_eq!(t.gate, "fire");
+            assert_eq!(t.on_resistance_ohm, 1e-3);
+            assert_eq!(t.off_resistance_ohm, 1e6);
+        }
+        c => panic!("{c:?}"),
+    }
+    let e = errors(&THYRISTOR.replace("\"0.9\"", "\"0.8\""));
+    assert_eq!(e.len(), 1);
+    assert_eq!(e[0].code, "E102");
+    assert_eq!(e[0].path, "components[1] (thyristor)");
+    assert!(e[0].hint.contains("\"version\": \"0.9\""), "{}", e[0].hint);
+    // The gate is a signal, the resistances those of a diode.
+    let e = errors(&THYRISTOR.replace("\"gate\": \"fire\"", "\"gate\": \"fir\""));
+    assert_eq!(e[0].code, "E170");
+    assert_eq!(e[0].path, "components[1].gate");
+    let e = errors(&THYRISTOR.replace(
+        "\"gate\": \"fire\"",
+        "\"gate\": \"fire\", \"on_resistance_ohm\": 1.0, \"off_resistance_ohm\": 0.5",
+    ));
+    assert_eq!(e[0].code, "E132");
+    let catalog = openkeito_model::component_catalog();
+    let info = catalog.iter().find(|c| c.type_name == "thyristor").unwrap();
+    let parsed: openkeito_model::Component = serde_json::from_value(info.example.clone()).unwrap();
+    assert_eq!(parsed.type_name(), "thyristor");
+    let schema = openkeito_model::json_schema();
+    let version = schema["properties"]["version"]["description"]
+        .as_str()
+        .unwrap();
+    assert!(
+        version.contains("0.9") && version.contains("thyristor"),
+        "{version}"
+    );
 }

@@ -1,4 +1,4 @@
-//! The states of diodes and controlled switches: thresholds, the solution
+//! The states of diodes, thyristors and controlled switches: thresholds, the solution
 //! that settles the diode states after a switching action, and their events.
 
 use super::parts::peak_magnitudes;
@@ -217,6 +217,8 @@ impl Simulator {
             match e.read_signals(&self.controls.values) {
                 SignalResponse::Unchanged => {}
                 SignalResponse::ValueChanged => value_changed = true,
+                // The diode states are settled: see `SignalResponse::Fired`.
+                SignalResponse::Fired => switched = true,
                 SignalResponse::Switched(action) => {
                     switched = true;
                     let name = e.name().to_string();

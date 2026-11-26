@@ -1,5 +1,5 @@
 //! Switching components: the time-controlled switch, the diode, the switch
-//! driven by a control signal and the fault.
+//! driven by a control signal, the thyristor and the fault.
 
 use openkeito_model as model;
 
@@ -32,6 +32,8 @@ pub(super) fn diode(b: &mut Builder, d: &model::Diode) -> Expansion {
         g_off: 1.0 / d.off_resistance_ohm.ohm(),
         on: false,
         gate: None,
+        latching: false,
+        fired: false,
         i_last: 0.0,
         saved: 0.0,
         stress: element::DefaultStress::of(d.on_resistance_ohm, d.off_resistance_ohm),
@@ -50,6 +52,29 @@ pub(super) fn controlled_switch(b: &mut Builder, s: &model::ControlledSwitch) ->
         g_off: 1.0 / s.off_resistance_ohm.ohm(),
         on: false,
         gate: Some(gate),
+        latching: false,
+        fired: false,
+        i_last: 0.0,
+        saved: 0.0,
+        stress: element::DefaultStress::of(s.on_resistance_ohm, s.off_resistance_ohm),
+    }));
+    Expansion::two_terminal(e, a, bb)
+}
+
+pub(super) fn thyristor(b: &mut Builder, s: &model::Thyristor) -> Expansion {
+    let (a, bb) = b.two_nodes(&s.nodes);
+    let gate = b.signal(&s.gate);
+    // A diode that reads its gate: its state follows from the solution.
+    let e = b.push_diode(Box::new(element::TwoState {
+        name: s.name.clone(),
+        a,
+        b: bb,
+        g_on: 1.0 / s.on_resistance_ohm.ohm(),
+        g_off: 1.0 / s.off_resistance_ohm.ohm(),
+        on: false,
+        gate: Some(gate),
+        latching: true,
+        fired: false,
         i_last: 0.0,
         saved: 0.0,
         stress: element::DefaultStress::of(s.on_resistance_ohm, s.off_resistance_ohm),

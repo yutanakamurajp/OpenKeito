@@ -383,7 +383,7 @@ fn additions(model: &Model) -> Vec<(&'static str, String)> {
 /// in the last list (and that version as `since` in its `ComponentSpec` or
 /// `ControlSpec`); a test keeps the two in step. A model that declares an
 /// older version and uses the addition then gets E102.
-const VERSION_ADDITIONS: [(&str, &[&str]); 7] = [
+const VERSION_ADDITIONS: [(&str, &[&str]); 8] = [
     (
         "0.2",
         &[
@@ -478,6 +478,7 @@ const VERSION_ADDITIONS: [(&str, &[&str]); 7] = [
         ],
     ),
     ("0.8", &["expression"]),
+    ("0.9", &["thyristor"]),
 ];
 
 /// "a", "a and b" or "a, b and c".
@@ -1158,6 +1159,7 @@ fn is_series_component(c: &Component) -> bool {
         | Component::Switch(_)
         | Component::Diode(_)
         | Component::ControlledSwitch(_)
+        | Component::Thyristor(_)
         | Component::NonlinearResistor(_)
         | Component::NonlinearInductor(_)
         | Component::ControlledVoltageSource(_)
@@ -1470,10 +1472,10 @@ fn check_included_subcircuit(model: &Model, d: &mut Vec<Diagnostic>) {
     }
 }
 
-/// A scan describes one linear network: components with two states (diodes
-/// and controlled switches) are in it with their blocking resistance. The
-/// warning belongs to the model, so `validate`, `run` and `scan` all give
-/// it; the scan itself adds nothing to it.
+/// A scan describes one linear network: components with two states (diodes,
+/// controlled switches and thyristors) are in it with their blocking
+/// resistance. The warning belongs to the model, so `validate`, `run` and
+/// `scan` all give it; the scan itself adds nothing to it.
 fn warn_of_states_in_a_scan(model: &Model, d: &mut Vec<Diagnostic>) {
     let names: Vec<&str> = model
         .components
@@ -1488,8 +1490,8 @@ fn warn_of_states_in_a_scan(model: &Model, d: &mut Vec<Diagnostic>) {
         "W192",
         "components",
         format!(
-            "diodes and controlled switches are taken as off (their blocking resistance) in \
-             the frequency scan: {}",
+            "diodes, controlled switches and thyristors are taken as off (their blocking \
+             resistance) in the frequency scan: {}",
             names.join(", ")
         ),
         "A scan describes one linear network. Replace an element by a resistor or a closed \
@@ -1707,12 +1709,13 @@ mod tests {
         for version in SUPPORTED_VERSIONS {
             assert!(validate(&model(version)).is_empty(), "version {version}");
         }
-        let d = validate(&model("0.9"));
+        let d = validate(&model("0.10"));
         assert_eq!(d.len(), 1);
         assert_eq!(d[0].code, "E101");
-        assert!(d[0].hint.contains("\"version\": \"0.8\""), "{}", d[0].hint);
+        assert!(d[0].hint.contains("\"version\": \"0.9\""), "{}", d[0].hint);
         assert!(
-            d[0].hint.contains("0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8"),
+            d[0].hint
+                .contains("0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9"),
             "{}",
             d[0].hint
         );

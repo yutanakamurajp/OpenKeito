@@ -87,7 +87,7 @@ contributors.
 - The software follows SemVer 2.0.0. The single source of the version is `version` in
   `[workspace.package]` of `Cargo.toml`; every crate inherits it, and `openkeito --version`
   and `summary.json` report it.
-- The `version` field of the model format (now `"0.8"`) is separate from the software
+- The `version` field of the model format (now `"0.9"`) is separate from the software
   version. Change it only when the format changes, and say so in the CHANGELOG.
 - To release: take the commits since the last tag and choose the next version (while
   0.y.z, a breaking change or `feat` raises y, `fix` or `perf` raises z). Update `version`

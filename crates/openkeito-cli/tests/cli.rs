@@ -248,6 +248,7 @@ fn schema_and_components_are_machine_readable() {
             "switch",
             "diode",
             "controlled_switch",
+            "thyristor",
             "three_phase_source",
             "coupled_rl",
             "pi_line",

@@ -46,6 +46,7 @@ const STATES = {
   switch: ["open", "closed"],
   controlled_switch: ["open", "closed"],
   diode: ["off", "on"],
+  thyristor: ["off", "on"],
   fault: ["no fault", "fault"],
 };
 
@@ -175,7 +176,7 @@ export function slotsOf(binding, timeline) {
 /// `model`: the model as an object (for `initially_closed` of a switch).
 /// `events`: every event of the run, in the order of the summary.
 ///
-/// A diode and a controlled switch start blocking, a fault starts off, a
+/// A diode, a thyristor and a controlled switch start blocking, a fault starts off, a
 /// switch as `initially_closed` says; every change after that is an event.
 /// The phases of a fault have their own events ("F1.a").
 export function stateTimeline(topology, model, events) {

@@ -129,6 +129,18 @@ controlled switch on, the diode states are settled again and `t = 0+` is solved 
 - A controlled switch is on while its gate signal is >= 0.5. The value computed at a grid
   point decides the state over the following step; before the first step the switch is
   off.
+- **Thyristor** (`thyristor`): a diode with the same two conductances whose turn-on needs
+  its gate. While the gate signal is >= 0.5 the thyristor is *fired*, and a blocking
+  thyristor that is fired is contradicted by a positive voltage, as a blocking diode;
+  one that is not fired never is. A conducting thyristor is contradicted by a negative
+  current whatever the gate, as a diode. Its state is therefore one of the diode states
+  below and settled with them. When the gate fires a thyristor whose voltage at the end of
+  the last step (or part) was positive, the diode states are settled at once, as after a
+  switching action, and the trial solution turns it on. A gate that fires during a
+  negative voltage turns it on at the zero crossing of the voltage, if the gate still
+  fires it then. No turn-off time and no holding current. At t = 0 the solution before the
+  controls are first evaluated is solved again after them (as for every element that
+  reads a signal), and its peaks do not count for the thresholds of the diode states.
 
 ## Diode states
 
@@ -147,7 +159,8 @@ At every grid point t_k:
    `-ε_i`, or blocking with a voltage above `ε_v`) changes its state now, after the output
    of t_k. Like the time-controlled switch opening at a current zero, this is up to one
    step late; the row at t_k can show the diode current up to `|di/dt|·h` below zero.
-2. Time-controlled switches and controlled switches take their actions.
+2. Time-controlled switches and controlled switches take their actions; thyristors read
+   their gate signals (fired, not fired).
 3. If any state changed, the diode states are settled: the circuit is solved with one
    backward-Euler step of length 1/alpha (γh for 2S-DIRK, h/2 for the trapezoidal rule)
    that is not kept; the states of inductors and capacitors stay as they are. Every
@@ -1548,22 +1561,27 @@ Where the instants come from:
   the rotating frame) is evaluated at the previewed time, every other block (those with a
   state, the measurements) holds its output. The blocks of a loop are previewed once, in
   their order.
-  The instant from which a `controlled_switch` would switch is found by bisection on the
+  The instant from which a `controlled_switch` would switch, or from which the gate of a
+  `thyristor` (conducting or not) starts or stops firing it, is found by bisection on the
   previewed time, to 2⁻⁴⁰ of a step. With a constant reference the PWM edges are the
   crossings of reference and carrier, exact to rounding; a reference that follows a
   measurement is sampled at grid points and held for one step (a delay of at most one
   step, half a step on average, and no quantization of the duty). A pulse that begins and
   ends within one step is not seen.
-- **Zero crossings** (a diode; a contact that opens at a current zero): each such element
-  has a zero-crossing function, positive while its state holds (the current of a
-  conducting diode, the reverse voltage of a blocking one, the current of a waiting contact
-  in its direction at the command). The solver evaluates it at the start of a part, after
+- **Zero crossings** (a diode or thyristor; a contact that opens at a current zero): each
+  such element has a zero-crossing function, positive while its state holds (the current
+  of a conducting diode or thyristor, the reverse voltage of a blocking diode or fired
+  thyristor, the current of a waiting contact in its direction at the command). The solver evaluates it at the start of a part, after
   the first stage and at the end. When the value at the end contradicts the state, the
   crossing is placed by linear interpolation between the two neighbouring values, the part
   is discarded and solved again up to the crossing. After an action the value at the start
   is not known (voltages and currents jump there); the line through the stage value and
-  the end value is then followed back. The place is off by (1/8)·h²·|g″/g′| of time at
-  most for a function g (h²ω/8 for a sine: 1.6e-8 s at h = 20 µs and 50 Hz).
+  the end value is then followed back. A gate that starts or stops firing a thyristor
+  changes its function without an action (its reverse voltage is armed or not); the
+  value at the start of the part that follows is evaluated again, so that a crossing in
+  the same step is placed from it, with one stage as with two. The place is off by
+  (1/8)·h²·|g″/g′| of time at most for a function g (h²ω/8 for a sine: 1.6e-8 s at
+  h = 20 µs and 50 Hz).
 
 At every instant the logic of a grid point applies: the actions are taken, the diode
 states are settled with the trial solution (backward Euler over 1/α of the rest of the
@@ -1623,12 +1641,74 @@ solution for ideal instants):
 | PI-controlled buck converter: averages over single periods at h = 2 µs | a limit cycle of the quantized duty | equal to 1e-4 V |
 | Six-pulse rectifier with source inductance: overlap time at h = 20 µs | 14.6 µs off | 0.15 µs off |
 | Contact opening at a current zero (30 A, 50 Hz), h = 20 µs: current interrupted | 0.19 A | 2.8e-6 A |
+| Six-pulse thyristor converter (400 V, 1 mH, 50 A, α = 15°, 30°, 60°, 150°), h = 20 µs: average DC voltage against the textbook | 0.83 V low at α = 30° (the firing waits for a grid point, half a step on average) | 1.3e-4 relative at most (0.034 V at α = 60°) |
+| The same: overlap time; firing instant of the gate | — | 0.48 µs off at most; 7e-18 s |
 
-The halving of the step divides these errors by 4. One second of the 10 kHz buck converter
+The halving of the step divides these errors by 4. With switching at grid points the
+firing of a thyristor waits for the first grid point at which the gate is >= 0.5, and the
+average DC voltage of the six-pulse converter at α = 30° is 1.69, 0.83, 0.40 and 0.19 V low
+at h = 40, 20, 10 and 5 µs, of first order (half a step of delay on average; within the
+step 0.02 V high at every h, the drop on a third thyristor during the overlap;
+`crates/openkeito-core/tests/thyristor.rs`). A thyristor whose gate always fires gives
+the rows and events of a diode to the last bit. One second of the 10 kHz buck converter
 takes 0.21 s at grid points with h = 1 µs and 0.26 s within the step (one more
 factorization per instant, and the preview and the zero-crossing functions in every step);
 at h = 10 µs it takes 0.058 s, with an error more than 1000 times below that of the grid
 points at 1 µs (1.5e-4 A against 0.21 A over the 2 ms of the test).
+
+### A three-phase PWM inverter at large steps
+
+A two-level voltage-source inverter built from its elements (per phase a
+`controlled_switch` to each rail and an antiparallel `diode`, ±375 V with the midpoint at
+gnd), an L filter of 0.2 Ω and 2 mH and a 400 V, 50 Hz grid behind 0.02 Ω and 0.2 mH, with
+sine-triangle PWM at 2450 Hz (a carrier period of 408.16 µs, a whole number of none of the
+steps). The current is about 100 A peak (the rating, 50 kVA, is 102 A peak). Each run is
+compared with the same model solved within the step at h = 0.25 µs, on the phase currents
+of 40 to 60 ms (one period of the fundamental) at the grid points of the coarser run: the
+largest difference of the averages over carrier periods, and the amplitude and phase of the
+fundamental (a DFT over the period). The reference is checked by its own convergence: the
+differences of 1 µs and 0.5 µs from it fall by 3.5 to 4.4, so it is about 1/4 of the 0.5 µs
+difference off (below 1e-5 A with fixed modulation). 2S-DIRK,
+`crates/openkeito-core/tests/pwm_inverter.rs` (the table is its ignored test, one P core):
+
+| Modulation fixed (M = 0.89) | h | Carrier average (of the rated peak) | Amplitude | Phase | Events | Time for 1 s |
+|---|---|---|---|---|---|---|
+| Within the step, no dead time | 5 µs | 7.6e-4 A (7.4e-6) | 6.2e-6 | 1.2e-4° | 2741 | 0.38 s |
+| | 10 µs | 3.0e-3 A (2.9e-5) | 2.3e-5 | 1.8e-4° | 2739 | 0.31 s |
+| | 20 µs | 1.0e-2 A (9.8e-5) | 6.5e-5 | 9.0e-4° | 2739 | 0.27 s |
+| | 25 µs | 5.5 A (5.4e-2) | 1.0e-2 | 2.7° | 2705 | 0.26 s |
+| Within the step, dead time 2 µs | 10 µs | 3.1e-3 A (3.1e-5) | 2.6e-5 | 4.3e-4° | 2743 | 0.44 s |
+| | 20 µs | 1.1e-2 A (1.0e-4) | 8.7e-5 | 1.0e-3° | 2743 | 0.42 s |
+| | 25 µs | 6.0 A (5.9e-2) | 8.1e-3 | 3.0° | 2707 | 0.38 s |
+| At grid points, no dead time | 1 µs | 1.1 A (1.1e-2) | 7.6e-3 | 0.21° | 2741 | 0.64 s |
+| | 20 µs | 15 A (0.14) | 0.11 | 5.0° | 2737 | 0.13 s |
+
+The reference has 2741 events (2745 with the dead time). Halving the step from 20 to
+10 µs divides the error of the carrier averages by 3.4 (both dead times), from 10 to 5 µs by
+3.9 (no dead time) and 2.6 (dead time 2 µs). A dead time shorter than the step puts the
+turn-off of one switch, the turn-on of the other and the commutation to the diode into one
+step: at most 6 switching events in one step of 20 µs, far below the limit of placed
+instants (56 here); no step reached it (no W270) and no run stopped (no E202) from 0.5 to
+25 µs.
+
+Two limits show:
+
+- **Pulses narrower than a step.** At M = 0.89 the narrowest pulse lasts (1 − M)·T_c/2 =
+  22.4 µs. The instants of the gate are found from the signals previewed at the end of the
+  part being solved (above), so a pulse that begins and ends within one step of 25 µs is not
+  seen: 36 events are missing and the error jumps from 1e-2 A to 5.5 A. With switching
+  within the step, the step has to be below the narrowest pulse.
+- **Controls that read the circuit.** With PI current control in the rotating frame (gains
+  4 Ω and 400 Ω/s, the grid voltage fed forward, the angle a ramp of ωt), the controls are
+  evaluated at grid points on the measured current, ripple included, and held for a step.
+  That sampling is of first order: from 1 to 0.5 µs the difference falls by 1.6 to 2.1, not
+  4. At 20 µs the amplitude is off by 1.2 %, the phase by 0.51°, the carrier averages by
+  3.3 A (3.2 % of the rated peak; at 10 µs 0.27 %, 0.18° and 0.72 A), and the ripple that the
+  controls sample makes more narrow pulses (2553 events against 2679). At grid points the
+  same case is off by 19 A and 4.7° at 20 µs.
+
+`grid` is twice as fast per step and about 1500 times less accurate here; `interpolated`
+at 20 µs is 100 times more accurate than `grid` at 1 µs in less than half the time.
 
 ### Methods that were compared
 
@@ -1830,6 +1910,11 @@ within the step, against the exact solutions for ideal instants (second order), 
 six-pulse rectifier with commutation overlap against V_d = (3√2/π)·V_LL − (3/π)·ωL_s·I_d
 [Mohan, Undeland, Robbins], a switch and a step source at times between grid points, and
 contacts and fault phases that open at their current zeros.
+`crates/openkeito-core/tests/thyristor.rs` checks the six-pulse phase-controlled converter
+against U_d = (3√2/π)·V_LL·cos α − (3/π)·ωL_s·I_d and the overlap angle from
+cos α − cos(α + u) = 2ωL_s·I_d/(√2·V_LL) [Mohan, Undeland, Robbins, ch. 6] as a rectifier
+(α = 15°, 30°, 60°) and an inverter (α = 150°), the firing instants, the diode rectifier
+for a gate that always fires, and the first-order delay of the firing at grid points.
 `crates/openkeito-core/tests/three_phase.rs` compares the fault currents of all fault types,
 bolted and through resistances, with symmetrical components; the voltage ratio and phase
 shift of every vector group, the short-circuit current from u_k and the magnetizing current

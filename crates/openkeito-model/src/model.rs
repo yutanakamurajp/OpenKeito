@@ -8,10 +8,12 @@ pub use crate::controls::*;
 pub const FORMAT: &str = "openkeito-model";
 /// Current value of the `version` field. What a model of this version may
 /// use beyond the previous one is listed in `VERSION_ADDITIONS` (validation).
-pub const VERSION: &str = "0.8";
+pub const VERSION: &str = "0.9";
 /// Every `version` this crate reads. A model of an older version is also a
 /// valid model of every newer one.
-pub const SUPPORTED_VERSIONS: [&str; 8] = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8"];
+pub const SUPPORTED_VERSIONS: [&str; 9] = [
+    "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9",
+];
 /// Name of the reference node (0 V).
 pub const GROUND: &str = "gnd";
 
@@ -21,7 +23,8 @@ pub const GROUND: &str = "gnd";
 pub struct Model {
     /// Must be "openkeito-model".
     pub format: String,
-    /// Format version: "0.8"; "0.7" for a model without the additions of
+    /// Format version: "0.9"; "0.8" for a model without the additions of
+    /// 0.9 (thyristor); "0.7" for a model without the additions of
     /// 0.8 (expression); "0.6" for a model without the additions of
     /// 0.7 (piecewise_linear, signal limits on lag, pi, integrator and
     /// limiter, pi.anti_windup, initialization on components);
@@ -201,7 +204,7 @@ pub enum Initialization {
     None,
     /// From the sinusoidal steady state: every source is a sine of one
     /// frequency; switches are in their state before t = 0, faults have not
-    /// started. Not for diodes and controlled switches.
+    /// started. Not for diodes, controlled switches and thyristors.
     SteadyState,
 }
 
@@ -232,7 +235,8 @@ pub enum Spacing {
 /// Impedances over frequency: the network with every source set to zero
 /// (voltage sources shorted, current sources open, three-phase sources
 /// reduced to their internal impedance), switches in their state before
-/// t = 0, faults not started, diodes and controlled switches off. Each
+/// t = 0, faults not started, diodes, controlled switches and thyristors
+/// off. Each
 /// impedance is the voltage at a node per ampere injected into a node.
 ///
 /// Give either start_hz, stop_hz and points, or frequencies_hz.

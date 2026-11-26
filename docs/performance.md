@@ -284,6 +284,26 @@ The tables above this section still hold the numbers measured before this change
 other builds run on the machine, the median of one build moves by a few ns even on a fixed
 core: compare builds in turn, ten times or more, when the machine is quiet.
 
+The thyristor (M11) changed the code that decides the states of diodes and controlled
+switches and the start of a run. `openkeito run` of 0.13.0 and of the build with the
+thyristor, in turn, 7 rounds on one P core, best run time without the output:
+
+| Example | 0.13.0 | With the thyristor | Change |
+|---|---|---|---|
+| `buck` | 3.008 ms | 3.008 ms | 0.0 % |
+| `buck_interpolated` | 1.458 ms | 1.453 ms | −0.3 % |
+| `rectifier` | 14.09 ms | 14.27 ms | +1.3 % |
+| `rlc` | 0.905 ms | 0.901 ms | −0.5 % |
+| `rl_breaker` | 1.049 ms | 1.052 ms | +0.3 % |
+| `line_areas` | 4.506 ms | 4.534 ms | +0.6 % |
+| `machine_avr_governor` | 58.53 ms | 58.63 ms | +0.2 % |
+| `converter` | 4.535 ms | 4.570 ms | +0.8 % |
+| `saturable_reactor` | 0.233 ms | 0.233 ms | −0.1 % |
+| `three_phase_fault` | 12.27 ms | 12.27 ms | 0.0 % |
+| `transition_three_times` | 287.9 ms | 292.0 ms | +1.4 % |
+
+The rows and events of the 23 examples are those of 0.13.0 to the byte.
+
 ## WebAssembly (M5)
 
 `openkeito-wasm` (wasm32-unknown-unknown, one thread) under Node 24 against the native
@@ -405,6 +425,67 @@ Output (machines and converters, steady, 50 µs):
 - Accuracy of the same kind of runs:
   [numerical-method.md](numerical-method.md#from-one-power-flow-to-the-next) (start 1e-10 pu
   from the power flow; end 1e-5 pu from the next one at 50 µs).
+
+## Three-phase PWM inverters at large steps (M11)
+
+One second of the two-level PWM inverter of
+[numerical-method.md](numerical-method.md#a-three-phase-pwm-inverter-at-large-steps)
+(12 two-state elements, carrier 2450 Hz, modulation fixed, 2S-DIRK; test
+`table_of_the_errors_of_a_pwm_inverter_against_fine_steps` of `tests/pwm_inverter.rs`, one
+P core, 0.06 s simulated with a row every µs, one run each; the time includes the rows):
+
+| h | Within the step, no dead time | Dead time 2 µs | At grid points, no dead time |
+|---|---|---|---|
+| 1 µs | 0.94 s | 1.11 s | 0.64 s |
+| 5 µs | 0.38 s | 0.52 s | 0.22 s |
+| 10 µs | 0.31 s | 0.44 s | 0.16 s |
+| 20 µs | 0.27 s | 0.42 s | 0.13 s |
+| 25 µs | 0.26 s | 0.38 s | 0.12 s |
+
+From 10 µs on the time hardly falls with a larger step: the 2741 events of 60 ms (each a placed
+instant with its factorization and trial solution) cost the same at every step. A dead time
+shorter than the step adds one instant per edge.
+
+## Eight PWM inverters on lines, before parallel switching steps (M11, issue #51)
+
+Eight of these inverters (modulation fixed, carriers shifted by 45° from one to the next),
+each with a load of 3.2 Ω and 1 mH per phase on its bus, the buses joined into a ring by
+50 km `bergeron_line` (travel time 169 µs), and a 400 V source on the first bus: 86
+unknowns, 96 two-state elements, about 21 800 switching events in 60 ms. Test
+`pwm_inverters_per_step` of `benchmark.rs`, pinned to the 8 P cores (mask `C03C03`), best of
+3 rounds, time per step without the output; "by parts" is the share of the steps whose
+parts were solved each on its own (side by side on the threads), every other step is solved
+stage by stage over the whole circuit:
+
+| Switching | h | Partitioning (parts, largest) | 1 thread | 2 | 4 | 8 | Steps by parts | Split steps |
+|---|---|---|---|---|---|---|---|---|
+| `interpolated` | 10 µs | `off` (1, 86) | 80.3 µs | — | — | — | — | 73.6 % |
+| | | `auto` (2, 56) | 84.1 µs | 84.5 µs | — | — | 0 % | 73.6 % |
+| | | `every_line` (8, 16) | 58.6 µs | 59.0 µs | 58.9 µs | 63.5 µs | 0 % | 73.6 % |
+| `interpolated` | 20 µs | `off` (1, 86) | 153 µs | — | — | — | — | 93.7 % |
+| | | `every_line` (8, 16) | 110 µs | 110 µs | 110 µs | 110 µs | 0 % | 93.7 % |
+| `grid` | 10 µs | `off` (1, 86) | 24.7 µs | — | — | — | — | 0 % |
+| | | `every_line` (8, 16) | 10.3 µs | 11.3 µs | 11.5 µs | 11.5 µs | 27.0 % | 0 % |
+| `grid` | 20 µs | `off` (1, 86) | 31.4 µs | — | — | — | — | 0 % |
+| | | `every_line` (8, 16) | 13.5 µs | 13.9 µs | 14.0 µs | 14.1 µs | 7.1 % | 0 % |
+
+(`auto` keeps four inverters together, up to 48 named nodes, and so has two parts; at 20 µs
+it takes 155 µs with 1 or 2 threads.) The rows are the same, to the last bit, for every
+number of threads.
+
+- With `interpolated`, **no step** is solved by parts: every step looks for the zero
+  crossings of the diodes, and a step that does is solved stage by stage over the whole
+  circuit, even when nothing switches in it. Threads therefore bring nothing (8 threads are
+  slower than 1 by the cost of waking them). Dividing at every line still pays on one
+  thread (58.6 against 80.3 µs at 10 µs, 110 against 153 µs at 20 µs): an action
+  factorizes only the matrix of its part, of 16 unknowns.
+- With `grid`, a step with an action at its start is solved whole too; with 8 inverters
+  nearly every grid point has one, and only 27 % (10 µs) or 7 % (20 µs) of the steps are
+  solved by parts. Threads do not help there either.
+- What issue #51 would change: each part placing its own instants and looking for its own
+  zero crossings, so that a step is solved by parts unless a part itself acts. Here each
+  part has about 1/8 of the events. Measured here is only the present state; the speed-up
+  of #51 has not been measured.
 
 ## Control-load breakdown and thread scaling on a divided network (M10)
 

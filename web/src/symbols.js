@@ -3,7 +3,7 @@
 //
 // The circuit symbols follow the forms of IEC 60617 where it has one
 // (resistor, inductor, capacitor, ideal sources, make contact, diode,
-// two-winding transformer, machine, converter, earth) and are composed of
+// thyristor, two-winding transformer, machine, converter, earth) and are composed of
 // its elements otherwise (see web/README.md for the table). A control block
 // is a rectangle with a qualifying mark.
 //
@@ -124,6 +124,14 @@ export const CIRCUIT = {
   switch: { left: 12, right: 32, body: [], off: [contactOpen], on: contactClosed },
   // Anode at nodes[0].
   diode: { left: 15, right: 28, body: [["g", [15, -7, 15, 7, 28, 0]], ["l", 28, -7, 28, 7]] },
+  // A diode with a gate at the cathode side (reverse-blocking triode
+  // thyristor); anode at nodes[0]. The gate ends in the mark of the
+  // operating device, where the gate signal comes in.
+  thyristor: {
+    left: 15,
+    right: 28,
+    body: [["g", [15, -7, 15, 7, 28, 0]], ["l", 28, -7, 28, 7], ["p", [28, 3, W / 2, 9, W / 2, 10]], ["r", W / 2 - 3.5, 10, 7, 4]],
+  },
   controlled_switch: {
     left: 12,
     right: 32,

@@ -41,7 +41,7 @@ function drawn(topology, options) {
 test("every type of the catalog has a symbol, and every symbol a type", async () => {
   const wasm = await module();
   const catalog = JSON.parse(wasm.components());
-  assert.equal(catalog.length, 58);
+  assert.equal(catalog.length, 59);
   assert.deepEqual(typesWithoutSymbol(catalog), []);
   assert.deepEqual(symbolsWithoutType(catalog), []);
   assert.equal(Object.keys(CIRCUIT).length, catalog.filter((e) => e.category === "circuit").length);

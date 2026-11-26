@@ -21,7 +21,7 @@ fn catalog_components() -> Vec<Component> {
 #[test]
 fn the_terminals_of_every_type_are_its_nodes() {
     let components = catalog_components();
-    assert_eq!(components.len(), 26);
+    assert_eq!(components.len(), 27);
     for c in &components {
         let nodes = c.node_names();
         let of_terminals: Vec<String> = c.terminals().into_iter().flat_map(|t| t.nodes).collect();

@@ -210,7 +210,7 @@ test("the state of a switch changes at the time of its event", async () => {
 });
 
 test("a diode conducts in the rows that the events say, and its current agrees", async () => {
-  for (const [file, diode] of [["rectifier.json", "D1"], ["rectifier.json", "D2"], ["buck.json", "D1"], ["buck_interpolated.json", "D1"]]) {
+  for (const [file, diode] of [["rectifier.json", "D1"], ["rectifier.json", "D2"], ["buck.json", "D1"], ["buck_interpolated.json", "D1"], ["thyristor_rectifier.json", "T1"]]) {
     const run = await ran(file);
     const current = run.table.columns[run.table.header.indexOf(`I(${diode})`)];
     const unit = run.timeline.units.get(`component:${diode}`).list[0];

@@ -123,6 +123,13 @@
       "columns": ["V(a)", "U(R1)", "I(D1)", "I(D2)"]
     },
     {
+      "file": "thyristor_rectifier.json",
+      "group": "power-electronics",
+      "title": "Six-pulse thyristor rectifier",
+      "description": "Six thyristors fired at 30 deg after the natural commutation, with 1 mH per phase: the DC current rises to 50 A and the average DC voltage is the textbook 452.8 V. The firing and the end of each commutation lie between grid points (see the Events tab).",
+      "columns": ["V(p)", "V(n)", "I(LD)", "I(T1)"]
+    },
+    {
       "file": "transformer_inrush.json",
       "group": "nonlinear",
       "title": "Inrush current of a saturable transformer",
