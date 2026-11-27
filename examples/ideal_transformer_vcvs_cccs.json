@@ -1,0 +1,31 @@
+{
+  "format": "openkeito-model",
+  "version": "0.10",
+  "name": "ideal transformer of a vcvs and a cccs feeding a diode bridge",
+  "description": "A 230 V, 50 Hz source behind 0.1 ohm and 1 mH feeds an ideal transformer of ratio n = 10 built from dependent sources: the sense port of the cccs F1 carries the primary current from p to x, the vcvs E1 holds V(x) = n V(s), and F1 drives n times the primary current into s. A single-phase diode bridge with 2 mF and 4 ohm is the load; 100 ohm from its negative side to gnd holds the DC side while every diode blocks. The switching instants lie within the time steps (the default of format 0.10).",
+  "simulation": {
+    "time_step_s": 2e-5,
+    "end_time_s": 0.1
+  },
+  "components": [
+    {"type": "voltage_source", "name": "E0", "nodes": ["g", "gnd"], "waveform": {"type": "sine", "amplitude": 325.2691193458119, "frequency_hz": 50.0, "phase_deg": 0.0}},
+    {"type": "resistor", "name": "RS", "nodes": ["g", "i"], "resistance_ohm": 0.1},
+    {"type": "inductor", "name": "LS", "nodes": ["i", "p"], "inductance_h": 1e-3},
+    {"type": "cccs", "name": "F1", "sense": ["p", "x"], "output": ["gnd", "s"], "gain_a_per_a": 10.0},
+    {"type": "vcvs", "name": "E1", "control": ["s", "gnd"], "output": ["x", "gnd"], "gain_v_per_v": 10.0},
+    {"type": "diode", "name": "D1", "nodes": ["s", "pos"]},
+    {"type": "diode", "name": "D2", "nodes": ["neg", "s"]},
+    {"type": "diode", "name": "D3", "nodes": ["gnd", "pos"]},
+    {"type": "diode", "name": "D4", "nodes": ["neg", "gnd"]},
+    {"type": "capacitor", "name": "CDC", "nodes": ["pos", "neg"], "capacitance_f": 2e-3},
+    {"type": "resistor", "name": "RDC", "nodes": ["pos", "neg"], "resistance_ohm": 4.0},
+    {"type": "resistor", "name": "RG", "nodes": ["neg", "gnd"], "resistance_ohm": 100.0}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "p"},
+    {"type": "node_voltage", "node": "s"},
+    {"type": "branch_current", "component": "F1"},
+    {"type": "branch_voltage", "component": "RDC"},
+    {"type": "branch_current", "component": "D1"}
+  ]
+}

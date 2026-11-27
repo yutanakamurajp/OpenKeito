@@ -1,4 +1,4 @@
-// Pure JS inspector core tests: catalog/schema metadata for all 59 types,
+// Pure JS inspector core tests: catalog/schema metadata for all 63 types,
 // round-trip JSON edits, edit history, and mapping validate diagnostics.
 //
 // The catalog, schema, and validation come from the WebAssembly module, which
@@ -99,7 +99,7 @@ function buildScaffoldModelText() {
   };
   return JSON.stringify({
     format: "openkeito-model",
-    version: "0.9",
+    version: "0.10",
     simulation: {
       time_step_s: 1e-6,
       end_time_s: 0.01,
@@ -150,16 +150,16 @@ function buildScaffoldModelText() {
   }, null, 2);
 }
 
-test("buildCatalogIndex builds metadata for all 59 types, simulation, and outputs", async () => {
+test("buildCatalogIndex builds metadata for all 63 types, simulation, and outputs", async () => {
   const wasm = await module();
   const catalog = JSON.parse(wasm.components());
   const schema = JSON.parse(wasm.schema());
   const index = buildCatalogIndex(catalog, schema);
 
-  assert.equal(index.all.length, 59);
-  assert.equal(index.components.length, 27);
+  assert.equal(index.all.length, 63);
+  assert.equal(index.components.length, 31);
   assert.equal(index.controls.length, 32);
-  assert.equal(index.byType.size, 59);
+  assert.equal(index.byType.size, 63);
 
   for (const entry of catalog) {
     const info = index.get(entry.type);
@@ -213,7 +213,7 @@ test("buildCatalogIndex builds metadata for all 59 types, simulation, and output
   );
 });
 
-test("every one of the 59 catalog examples passes wasm.validate after addItem", async () => {
+test("every one of the 63 catalog examples passes wasm.validate after addItem", async () => {
   const wasm = await module();
   const index = buildCatalogIndex(JSON.parse(wasm.components()), JSON.parse(wasm.schema()));
   const scaffold = buildScaffoldModelText();

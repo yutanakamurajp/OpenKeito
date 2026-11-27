@@ -304,6 +304,28 @@ thyristor, in turn, 7 rounds on one P core, best run time without the output:
 
 The rows and events of the 23 examples are those of 0.13.0 to the byte.
 
+The dependent sources (issue #68) added element types, checks of validation and, for models
+of format `"0.10"`, a default of `"switching"`; a model without them goes through the same
+solver code. `openkeito run` of 0.15.0 and of the build with the dependent sources, in turn,
+7 rounds on one P core, best run time without the output (2026-11-27):
+
+| Example | 0.15.0 | With the dependent sources | Change |
+|---|---|---|---|
+| `buck` | 3.021 ms | 3.024 ms | +0.1 % |
+| `buck_interpolated` | 1.497 ms | 1.501 ms | +0.3 % |
+| `rectifier` | 14.21 ms | 14.16 ms | −0.3 % |
+| `rlc` | 0.898 ms | 0.900 ms | +0.3 % |
+| `rl_breaker` | 1.059 ms | 1.049 ms | −1.0 % |
+| `line_areas` | 4.511 ms | 4.535 ms | +0.5 % |
+| `machine_avr_governor` | 58.90 ms | 59.17 ms | +0.5 % |
+| `converter` | 4.595 ms | 4.604 ms | +0.2 % |
+| `saturable_reactor` | 0.226 ms | 0.227 ms | +0.3 % |
+| `three_phase_fault` | 12.41 ms | 12.40 ms | −0.1 % |
+| `transition_three_times` | 294.1 ms | 293.1 ms | −0.3 % |
+
+The rows and events of the 24 examples of 0.15.0 (57 CSV files) and their `validate`
+documents are those of 0.15.0 to the byte.
+
 ## WebAssembly (M5)
 
 `openkeito-wasm` (wasm32-unknown-unknown, one thread) under Node 24 against the native

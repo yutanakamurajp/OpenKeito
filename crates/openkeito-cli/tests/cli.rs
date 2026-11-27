@@ -266,7 +266,11 @@ fn schema_and_components_are_machine_readable() {
             "three_phase_controlled_source",
             "three_phase_controlled_current_source",
             "synchronous_machine",
-            "grid_following_converter"
+            "grid_following_converter",
+            "vcvs",
+            "vccs",
+            "cccs",
+            "ccvs"
         ]
     );
     assert_eq!(

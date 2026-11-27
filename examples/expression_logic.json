@@ -1,0 +1,61 @@
+{
+  "format": "openkeito-model",
+  "version": "0.10",
+  "name": "gate from comparison and logical operators",
+  "description": "A 100 V chopper whose switch is closed while the sine wave x (amplitude 1, 50 Hz) lies between 0.3 and 0.8: the gate is the expression (x > 0.3) && (x < 0.8), 1 while true and 0 otherwise. The load is 1 mH with 10 ohm and a freewheeling diode. With \"switching\": \"interpolated\" (the default of version 0.10) the switch acts where x crosses the band, between grid points (see events.csv): it closes at asin(0.3)/(2 pi 50) = 0.969867 ms and opens at asin(0.8)/(2 pi 50) = 2.951672 ms, closes again at 7.048328 ms and opens at 9.030133 ms, every 20 ms. The same gate written with sign and abs, (sign(x - 0.3) + abs(sign(x - 0.3)))/2 for x > 0.3 and abs(sign(p))*abs(sign(q)) for p && q, or with two comparators and a product, gives the same result byte for byte.",
+  "simulation": {
+    "time_step_s": 2e-5,
+    "end_time_s": 0.04
+  },
+  "components": [
+    {
+      "type": "voltage_source",
+      "name": "V1",
+      "nodes": ["n1", "gnd"],
+      "waveform": {"type": "dc", "value": 100.0}
+    },
+    {
+      "type": "controlled_switch",
+      "name": "S1",
+      "nodes": ["n1", "n2"],
+      "gate": "gate"
+    },
+    {
+      "type": "diode",
+      "name": "D1",
+      "nodes": ["gnd", "n2"]
+    },
+    {
+      "type": "inductor",
+      "name": "L1",
+      "nodes": ["n2", "n3"],
+      "inductance_h": 1e-3
+    },
+    {
+      "type": "resistor",
+      "name": "R1",
+      "nodes": ["n3", "gnd"],
+      "resistance_ohm": 10.0
+    }
+  ],
+  "controls": [
+    {
+      "type": "sine_wave",
+      "name": "x",
+      "amplitude": 1.0,
+      "frequency_hz": 50.0
+    },
+    {
+      "type": "expression",
+      "name": "gate",
+      "inputs": ["x"],
+      "expression": "(x > 0.3) && (x < 0.8)"
+    }
+  ],
+  "outputs": [
+    {"type": "signal", "signal": "x"},
+    {"type": "signal", "signal": "gate"},
+    {"type": "node_voltage", "node": "n2"},
+    {"type": "branch_current", "component": "R1"}
+  ]
+}

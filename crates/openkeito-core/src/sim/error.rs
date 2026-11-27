@@ -5,7 +5,13 @@ use openkeito_model::Diagnostic;
 #[derive(Debug)]
 pub enum SimError {
     /// The circuit equations have no unique solution.
-    Singular { time_s: f64, unknown: String },
+    Singular {
+        time_s: f64,
+        unknown: String,
+        /// The dependent sources of the part of the circuit whose equations
+        /// are singular.
+        dependent_sources: Vec<String>,
+    },
     /// The phasor equations (steady state) have no unique solution.
     PhasorSingular { frequency_hz: f64, unknown: String },
     /// A solution contains NaN or infinity.
@@ -47,16 +53,45 @@ pub enum SimError {
     Output(std::io::Error),
 }
 
+/// The hint of E200: the typical causes, and the gains of the dependent
+/// sources when the part of the circuit has some.
+fn singular_hint(dependent_sources: &[String]) -> String {
+    let mut hint = String::from(
+        "Typical causes: a node that is fed only by current sources or is left hanging by an open switch \
+         (add a resistor to gnd); a loop made only of voltage sources and closed switches \
+         (add a series resistor).",
+    );
+    if !dependent_sources.is_empty() {
+        let mut names: Vec<String> = dependent_sources
+            .iter()
+            .take(8)
+            .map(|n| format!("\"{n}\""))
+            .collect();
+        if dependent_sources.len() > 8 {
+            names.push(format!("{} more", dependent_sources.len() - 8));
+        }
+        hint.push_str(&format!(
+            " The dependent sources {} can be the cause: a loop through them whose gain is 1 \
+             (or close to 1) leaves a voltage or a current undetermined. Change a gain, or put a \
+             resistor into the loop.",
+            names.join(", ")
+        ));
+    }
+    hint
+}
+
 impl SimError {
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
-            SimError::Singular { time_s, unknown } => Diagnostic::error(
+            SimError::Singular {
+                time_s,
+                unknown,
+                dependent_sources,
+            } => Diagnostic::error(
                 "E200",
                 unknown.clone(),
                 format!("the circuit equations are singular at t = {time_s:e} s: {unknown} cannot be determined"),
-                "Typical causes: a node that is fed only by current sources or is left hanging by an open switch \
-                 (add a resistor to gnd); a loop made only of voltage sources and closed switches \
-                 (add a series resistor).",
+                singular_hint(dependent_sources),
             ),
             SimError::PhasorSingular {
                 frequency_hz,
@@ -160,7 +195,9 @@ impl SimError {
                      t = {time_s:e} s"
                 ),
                 "A quotient divided by 0 (give it minimum_denominator), a function left its \
-                 domain (sqrt of a negative number, ln of 0: limit its input with a limiter), a \
+                 domain (sqrt of a negative number, ln of 0: limit its input with a limiter; acos \
+                 or asin of a value beyond +/-1: limit it with min(max(x, -1), 1); both sides of \
+                 && and || are evaluated, so guard the value itself, as in sqrt(max(x, 0))), a \
                  pll could not be solved (time_step_s / 2 times its proportional_gain must be far \
                  below 1), or a signal grew without bound (check the signs of the feedback and \
                  the gains). Rows written before this time are kept.",
@@ -192,6 +229,12 @@ mod tests {
             SimError::Singular {
                 time_s: 0.0,
                 unknown: "V(n1)".to_string(),
+                dependent_sources: Vec::new(),
+            },
+            SimError::Singular {
+                time_s: 0.0,
+                unknown: "I(E1)".to_string(),
+                dependent_sources: vec!["E1".to_string()],
             },
             SimError::PhasorSingular {
                 frequency_hz: 50.0,

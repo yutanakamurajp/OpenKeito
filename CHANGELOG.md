@@ -3,6 +3,40 @@
 OpenKeito の変更履歴。Conventional Commits 1.0.0 のコミットをもとに書き、バージョンは SemVer 2.0.0 に従う。
 バージョンの正は `Cargo.toml` の `[workspace.package]` の `version`。手順は `AGENTS.md` の「Versions and releases」を参照。
 
+## 0.16.0 (2026-11-28)
+
+issue #68: 同じ刻みのうちに効く従属電源 `vcvs`・`vccs`・`cccs`・`ccvs` とモデル形式 `0.10` を足し、形式 `0.10` 以上のモデルの `simulation.switching` の既定を `interpolated` にした。`0.1`〜`0.9` の既存モデルはそのまま読め、既定も `grid` のまま。
+
+issue #69: 同じ形式 `0.10` で、`expression` に比較・論理の演算子と関数 `acos`・`asin`・`floor`・`ceil`・`round`・`trunc` を足した。古い版のモデルでは 6 つの名前を今までどおり信号名・変数名に使える。
+
+### Features
+
+* **model, core:** モデル形式 `0.10` を追加: 部品 `vcvs`（`control`・`output`・`gain_v_per_v`）、`vccs`（`transconductance_s`）、`cccs`（自分の測る口 `sense`・`gain_a_per_a`）、`ccvs`（`transresistance_ohm`）。修正節点法（Ho・Ruehli・Brennan 1975、Vlach・Singhal 1993）の書き込みで、利得は定数、単相。列は `I(<name>)` と、`cccs`・`ccvs` の `I(<name>.sense)`。`0.9` 以下での使用は `E102`。閉じた式との差は抵抗の回路で 1e-16 程度（許容 1e-12）、利得 1e5・1e6 の反転増幅器は 3 つの刻みで 3.3e-16（許容 1e-9）。同じ回路を 1 刻み遅れの `controlled_voltage_source`＋`gain` で組むと 1 刻みに −A·R_in/(R_in + R_f) = −9.09e3 倍で育ち、10 µs で 0.77 ms に E251。`vcvs`＋`cccs` の理想変圧器は `three_phase_ideal_transformer`・`transformer` とピークの 3.2e-13 以内（ダイオード整流は 1.1e-10、切り替えの時刻 9.0e-14 s 以内）（[crates/openkeito-core/tests/dependent_sources.rs](crates/openkeito-core/tests/dependent_sources.rs)、[crates/openkeito-core/tests/ideal_transformer.rs](crates/openkeito-core/tests/ideal_transformer.rs)）
+* **model:** 診断 `E144`（従属電源の利得が式を特異にする: 利得 1 で自分の出力を測る `vcvs`、k1·k2 = 1 で互いを測る 2 つ、利得 1 で出力が自分の測る口に戻る `cccs` など。t = 0 の状態で、従属電源のある連結な組ごとに、コンダクタンスを乱数（固定の種）で 2 回置いた消去で見る。600 未知数まで）、`E145`（利得によらず特異: `vcvs` の出力と `cccs`・`ccvs` の測る口のループで、測った電流がループの `vcvs` の測る電圧を変えないもの（`cccs` が負荷だけに流す、電圧源が固定した節点を `vcvs` が測り `cccs` がほかの節点に流すなど。電流が回路に戻っても変えなければ E145）、電流源と制御の口にしかつながらない節点など。`E144` と出た組を利得も乱数で置いてもう一度消去し、それでも特異なら `E144` の代わりに出す。hint はループに小さな抵抗を、節点には gnd への抵抗を入れる）と `W144`（出力と測る口のループで、電流が利得でだけ決まるもの: `ccvs` の伝達抵抗（自分の測る口に並ぶ `ccvs` は r·I = 0）、または測った電流がループの `vcvs` の測る電圧を変えるもの（`vcvs` の出力に並ぶ `cccs` の出力が `vcvs` の測る節点に入れば I = −V/(β·R1)）。実行は終わる。600 未知数を超える組は消去で見ないので、利得によらず特異でも `W144` のまま実行の `E200` で止まり、hint がそう言う）を追加。`vcvs`・`ccvs` の出力と測る口は理想枝として E142・W142 に、`vccs`・`cccs` の出力は電流源として E143・W143 に入る。制御の口は何もつながない（E141）
+* **model:** 形式 `0.10` 以上のモデルで `simulation.switching` を省くと `interpolated` になる（読んだときに `"interpolated"` を入れ、summary にも出る）。`0.9` 以下は `grid` のまま。0.10 で省いたモデルと `interpolated` を書いたモデル、0.9 で省いたモデルと `grid` を書いたモデルは、行とイベントがビット単位で同じ（[crates/openkeito-core/tests/switching.rs](crates/openkeito-core/tests/switching.rs)）
+* **core:** 実行の E200 の hint に、特異になった部分の従属電源の名前と「利得 1（か 1 に近い）のループ」を足した
+* **model:** `expression` に比較 `<`・`<=`・`>`・`>=`・`==`・`!=` と論理 `!`・`&&`・`||` を足した（形式 `0.10`、#69）。優先順位と結合は C（ISO/IEC 9899）と同じで、`^` は今までどおり単項より強い（`!x^2` = `!(x^2)`、`!x > 0` = `(!x) > 0`）。結果は真が 1、偽が +0。`!`・`&&`・`||` は 0 と −0 を偽とする。被演算子に NaN があれば NaN を返して E251 で止まり、`&&`・`||` は短絡せず両辺を計算する。括弧の無い比較の連鎖（`a < b < c`・`a == b == c`・`a < b == c`）と単独の `=`・`&`・`|` は E243（2 つ目の演算子の列を指し、hint は `(a < b) && (b < c)`）
+* **model:** `expression` に関数 `acos`・`asin`（|x| > 1 は NaN で E251。新しい番号は作らず、E251 の hint に `min(max(x, -1), 1)` と「両辺とも計算するので値の側で守る」を足した）、`floor`・`ceil`・`trunc`・`round`（ちょうど 0.5 は 0 から遠い方。C の `round` と同じで `round(2.5)` = 3、`round(-0.5)` = −1）を足した（関数は 14 個から 20 個、形式 `0.10`、#69）。`mod`・`clamp`・`?:` は足していない（`floor`・`min`・`max` で書ける）
+* **model:** 古い版（`0.9` 以下）のモデルで新しい演算子・関数を使うと E102（パスは `controls[i].expression ('>' at character 4)` のように、最初に使った演算子・関数と列）。6 つの関数の名前の予約は形式 `0.10` 以上のモデルだけで、`0.9` 以下のモデルでは `round` などを今までどおり信号名・変数名に使え、`round(x)` と書けば今までどおり「unknown function」の E243。`Expression::compile_for(version)` を足し（`compile` は今の版）、core はモデルの版でコンパイルする
+* **examples, web:** 例 `examples/expression_logic.json`（正弦波 x が 0.3〜0.8 の帯にある間だけ `(x > 0.3) && (x < 0.8)` でスイッチを閉じる 100 V のチョッパ、`interpolated`）を足した（`web/examples.json` は 27 例）。WebAssembly とコマンドの差は 1.1e-16
+* **web, examples:** 従属電源の図記号 4 種（2 トラック: 左に制御の口か測る口、右にひし形。電圧は + / −、電流は矢印。IEC 60617 の該当は公開の説明で確かめられず、教科書のひし形とした。記号 63 種）、図の上で測る口の電流を左（I0）、出力の電流を右（I1）に出す。例 `examples/dependent_sources.json`（反転増幅器、利得 −9.998900 との差 3.6e-15）と `examples/ideal_transformer_vcvs_cccs.json`（`vcvs`＋`cccs` の理想変圧器でダイオード整流）を足した（`web/examples.json` は 26 例）。WebAssembly とコマンドの差は 1.2e-12 と 1.6e-8（後者は `events.csv` の零に近い遮断電流。`result.csv` は 4.9e-13）
+
+### Bug Fixes
+
+* **py:** `openkeito.transition` がモデル形式の版を文字列で比べていた（`"0.10" < "0.5"` が真になり、制御のある `0.10` のモデルを `0.5` に下げる）のを、数の組の比較（`openkeito.convert.version_rank`）に直した。版は部品と制御が要るところまで上げ、下げない
+
+### Documentation & Paper
+
+* **docs:** `docs/model.md` の Expression（演算子の優先順位の表、真偽の値、NaN と短絡しないこと、関数 20 個と定義域、値が飛ぶ式の切り替えの時刻、版による名前の予約）、形式 `0.10` の説明、E251・E243 の説明、`docs/numerical-method.md`（先読みの段落: 比較の式は `comparator` と同じ）、`README.md`（形式の版、例の表）、`crates/openkeito-wasm/README.md`（`acos`・`asin` は最後の桁が違いうる、`floor` などは同じ、比較の境目の注意、差の表）、`web/README.md`（`web/dist` 54 ファイル・4.64 MB、27 例）、schema に出る `expression` の `inputs`・`expression` の説明（`0.10` で予約される名前、演算子の一覧への手がかり）、`plan.md`（6.15 の決定と結果、8 章・9 章）（#69）
+* **docs:** `docs/model.md`（Dependent sources の節、Loops、E142 の説明、形式 `0.10`、`simulation.switching` の既定、診断の表 E140–E145・W142–W144）、`docs/numerical-method.md`（Dependent sources の節: 書き込みの表、非対称な行列、検査、部分。文献に Vlach・Singhal を追加、Verification）、`README.md`（例の表）、`AGENTS.md`、`web/README.md`（記号の表、`web/dist` 53 ファイル・4.62 MB）、`crates/openkeito-wasm/README.md`（コマンドとの差）、`scripts/README.md`（図記号の照合表に 4 種を「規格に無い記号」として追加）、`docs/performance.md`、`plan.md`（6.13 の版の表、6.14 の決定と結果、8 章・9 章）
+
+### Tests & Performance
+
+* **core, model:** 閉じた式（4 種、ポートが gnd に付かない回路も）、反転増幅器の刻みによらない利得、1 刻み遅れの版の増え方、RC の充電の次数、精密整流の零点、定常と scan、部分の分け方、理想変圧器 2 通りとの比較、検査とソルバの一致（E142・E143 と W142・W143・E200）、利得による特異（E144）と利得によらない特異（E145: `vcvs` の出力と `cccs`・`ccvs` の測る口、利得 0・0.5・1・2・−3。電流源と制御の口にしかつながらない節点）の区別、測った電流が戻るループ（W144 で閉じた式と 1.9e-16（許容 1e-12）、β = 0・k = 0 は E144）、600 未知数を超える組（W144 と実行の E200）のテストを足した。修正を外すと落ちることを 13 か所で確かめた
+* v0.15.0 の例 24 件の CSV 57 ファイルと `validate` の文書がバイト単位で同じ。例 11 件の計算時間は 0.15.0 と −1.0〜+0.5 %（`docs/performance.md`）
+* **model, cli:** `expression` の比較・論理と 6 関数のテストを足した（#69）: 優先順位（20 組の、括弧を省いた式と C の規則で括弧を補った式の命令の列が同じ）、比較の連鎖の E243 と列、単独の `=`・`&`・`|`、真理値表（6 つの比較と 2 つの論理を −1・−0・0・0.5・1・NaN の 36 組で、`!` を 6 つで、ビット単位）、短絡しないこと、`acos`・`asin` の閉じた値と定義域の端（±1 は有限、1 + 2⁻⁵² は NaN）、`floor`・`ceil`・`trunc`・`round` の ±0・±0.5・±1.5・±2.5・0.49999999999999994・2⁵² − 0.5・2⁵³（ビット単位）、版による E102 と名前の予約、`acos` の E251 と止まる前の 12 行。例 `expression_logic.json` は、同じゲートを `sign`・`abs` で書いた式、`comparator` 2 つと `product` で組んだものと、`grid`・`interpolated` の両方で `result.csv`・`events.csv` がバイト単位で同じ。`interpolated` の切り替えの時刻は asin(a)/ω などの閉じた式と 1e-12 s 以内（[crates/openkeito-cli/tests/expression_logic.rs](crates/openkeito-cli/tests/expression_logic.rs)、[crates/openkeito-model/tests/expression_logic.rs](crates/openkeito-model/tests/expression_logic.rs)）。直しを外すと落ちることを 10 か所で確かめた
+* v0.15.0 の例 24 件の CSV 57 ファイルと、#70 をマージした main（6e71850）の例 26 件の CSV 61 ファイルが、#69 のあとでも `validate` の文書とともにバイト単位で同じ。式を使う例 `expression_control.json`（100 万刻みに延ばし、1 つの P コアに固定して交互に 15 回の中央値を 3 組）の計算時間は 0.15.0 と −0.7〜+0.4 %（#69）
+
 ## 0.15.0 (2026-11-27)
 
 M11 段 2（#53〜#55 系統連系の試験）: SCR・X/R からの系統の等価と外乱、応答の指標、要件ファイルから試験一式を batch で回して出典付きのしきい値で合否を出す道具を Python パッケージに足した。あわせて `interpolated` で刻みより狭いパルスが落ちる件（#48 の 25 µs）を直した。モデル形式（`0.9`）は変えておらず、v0.14.0 の例 24 件の実行結果 CSV（57 ファイル）は 0.14.0 とバイト単位で同じ（例に刻みの中で始まって終わるパルスは無い）。

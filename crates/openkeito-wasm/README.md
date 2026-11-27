@@ -123,18 +123,23 @@ compiles its own (the crate `libm`) into the module, while the command calls the
 its system. Both are accurate to the last bit or so, but round differently: of 2000 random
 arguments, 1 to 20 % give a result that differs in the last bit (measured against the C
 library of Windows: `sin` 1.7 %, `cos` 1.3 %, `exp` 9 %, `ln` 5 %, `atan2` 19 %, `hypot` 16 %;
-`sqrt` and `mul_add` never). Every model with a sine source, a machine, a transformation or a
+`sqrt` and `mul_add` never; `acos` and `asin` of `expression` are such functions too, while
+`floor`, `ceil`, `trunc` and `round` are exact and give the same bits). Where an `expression`
+compares the result of such a function with a bound (`sin(x) > 0.5`), a difference in the
+last bit can turn the comparison the other way at the bound, and the two results then differ
+by the jump; the example `expression_logic` keeps its comparisons away from that. Every model with a sine source, a machine, a transformation or a
 PLL therefore differs from the last digit on, and the difference grows where the circuit is
 sensitive. Measured over the examples (largest difference of a number relative to the largest
 absolute value of its column, Windows 11, x86-64):
 
 | Example | Largest difference |
 |---|---|
-| `control_blocks`, `rl_breaker`, `saturable_reactor` | 1e-16 to 4e-16 |
-| `pll`, `converter_voltage_support`, `line_areas`, `converter`, `line_energization`, `rectifier` | 7e-15 to 1e-12 |
+| `control_blocks`, `rl_breaker`, `saturable_reactor`, `expression_logic` | 1e-16 to 4e-16 |
+| `pll`, `converter_voltage_support`, `line_areas`, `converter`, `line_energization`, `rectifier`, `dependent_sources` | 7e-15 to 1.2e-12 |
 | `transformer_inrush`, `transition_three_times`, `synchronous_machine` | 2e-12 to 5e-12 |
 | `held_injection`, `machine_avr_governor` | 5e-10 to 1e-9 |
 | `three_phase_fault` | 2e-9 (the scan: a transfer impedance of 1e6 ohm; the run 3e-13) |
+| `ideal_transformer_vcvs_cccs` | 1.6e-8 (the current interrupted at a turn-off in `events.csv`, near zero; `result.csv` 4.9e-13) |
 
 The rows, columns and events are the same; the times of events placed within a step differ
 by the same order. The counts of iterations in the summary can differ slightly

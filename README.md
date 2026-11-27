@@ -37,8 +37,8 @@ connects to them. OpenKeito writes that step and leaves the rest to the existing
 
 ## What it simulates
 
-Linear and nonlinear R, L and C (saturation, surge arresters), sources, switches,
-diodes and thyristors, three-phase sources, coupled RL branches, pi lines and travelling-wave lines,
+Linear and nonlinear R, L and C (saturation, surge arresters), sources, dependent sources
+(VCVS, VCCS, CCCS, CCVS) that act within the time step, switches, diodes and thyristors, three-phase sources, coupled RL branches, pi lines and travelling-wave lines,
 transformers with saturation, faults, synchronous machines, grid-following converters
 (averaged) and a library of control blocks (transfer functions, limiters, delays, abc/dq0,
 phase-locked loop). Around them: steady-state initialization from a phasor solution,
@@ -109,15 +109,18 @@ Exit codes: 0 success, 1 the simulation failed, 2 the model or the request is in
 `openkeito schema` and `openkeito components` are the reference for field names; read them
 instead of guessing. [docs/model.md](docs/model.md) has the conventions (signs, three-phase
 buses, phasors, when a switching action takes effect), the simulation settings and a
-section for each family of components. The current format version is `"0.9"` (set
-`"version": "0.9"` when using the `thyristor`, `"0.8"` for the `expression` control block,
+section for each family of components. The current format version is `"0.10"` (set
+`"version": "0.10"` when using the dependent sources `vcvs`, `vccs`, `cccs` and `ccvs`, or
+the comparison and logical operators or `acos`, `asin`, `floor`, `ceil`, `round` and `trunc`
+in an `expression`, `"0.9"` for the `thyristor`, `"0.8"` for the `expression` control block,
 `"0.7"` for `piecewise_linear` or signal-name limits, `"0.6"` for `tap_changes`,
 `impedance_changes` or `zero_sequence_inverted`, or `"0.5"` for `bergeron_line`,
 `switching`, machines and converters); models of older versions are read as before.
 
-Switching instants lie on the time grid by default (`"switching": "grid"`). **For power
-electronics, set `"switching": "interpolated"`**: every instant is then placed within its
-time step, and a 10 kHz buck converter at 10 µs is more accurate than at 1 µs on the grid
+Switching instants lie within the time step by default in models of format `"0.10"`
+(`"switching": "interpolated"`), and on the time grid in models of older versions
+(`"grid"`), which keep their results. **For power electronics, use `"interpolated"`**
+(set it in a model of an older version): every instant is then placed within its time step, and a 10 kHz buck converter at 10 µs is more accurate than at 1 µs on the grid
 (compare `examples/buck_interpolated.json` with `examples/buck.json`).
 
 ### Examples
@@ -126,6 +129,7 @@ time step, and a 10 kHz buck converter at 10 µs is more accurate than at 1 µs 
 |---|---|
 | `rlc.json` | series RLC step response: the smallest model |
 | `rl_breaker.json` | a breaker that interrupts at a current zero |
+| `dependent_sources.json` | an inverting amplifier whose operational amplifier is a `vcvs` of gain 1e5 (format `0.10`): the gain of the closed form at every instant |
 | `three_phase_fault.json` | 66 kV source, pi line, YNd11 transformer and a ground fault, started from the steady state; has a `frequency_scan` |
 | `line_energization.json` | a source switched onto an open 100 km line with travelling waves (`bergeron_line`); has a `frequency_scan` |
 | `line_areas.json` | three areas joined by two travelling-wave lines, solved part by part |
@@ -137,11 +141,13 @@ time step, and a 10 kHz buck converter at 10 µs is more accurate than at 1 µs 
 | `held_injection.json` | a controlled three-phase current source that starts in the steady state |
 | `buck.json`, `buck_pi.json`, `buck_interpolated.json` | a 10 kHz buck converter: open loop, with PI voltage control, and with switching instants within the step |
 | `rectifier.json` | diode bridge with capacitor input |
+| `ideal_transformer_vcvs_cccs.json` | an ideal transformer built from a `vcvs` and a `cccs` (format `0.10`), feeding a diode bridge |
 | `thyristor_rectifier.json` | six-pulse thyristor rectifier fired at 30 deg (`thyristor`, format `0.9`), with commutation overlap |
 | `grid_test/requirements.json` (with `grid_test/converter_device.json`) | a requirement file: the converter behind grids of short-circuit ratio 10 to 1.2 with a fault, a phase jump and a voltage step, 18 cases judged by criteria (`openkeito.requirements`; example limits, not those of a grid code) |
 | `arrester.json`, `saturable_reactor.json`, `transformer_inrush.json` | nonlinear elements: a surge arrester, a saturable reactor with a diode, the inrush current of a transformer |
 | `control_blocks.json`, `current_control.json`, `pll.json` | control blocks: a set point shaped by blocks, PI control of a current, a phase-locked loop |
 | `expression_control.json` | mathematical expressions (`expression` control block, format `0.8`) driving a controlled current source |
+| `expression_logic.json` | a gate written with the comparison and logical operators of `expression` (format `0.10`), switching a chopper between grid points |
 
 ## In the browser
 
@@ -257,8 +263,10 @@ their numbers; measured run times are in [docs/performance.md](docs/performance.
 
 ## Limits
 
-- Switching instants lie on the time grid unless `"switching": "interpolated"` is set.
-  Diodes and controlled switches are resistors with two values.
+- Switching instants lie on the time grid in models of versions before `"0.10"` unless
+  `"switching": "interpolated"` is set.
+  Diodes and controlled switches are resistors with two values. Dependent sources have
+  constant gains and are single-phase.
 - Transformer saturation has no hysteresis and no remanence, and a three-phase transformer
   is a bank of three single-phase units. Lines are pi sections or travelling-wave lines with
   constant parameters (no frequency dependence).
@@ -275,7 +283,8 @@ Done: the circuit solver with two integration methods; power-electronics switchi
 three-phase networks with steady-state initialization and frequency scans; the Python
 package with conversion from pandapower and PowSyBl, schedules and the MCP server; control
 blocks, machines, nonlinear elements, travelling-wave lines, converters, transitions and
-the parallel solution of divided networks; grid-connection tests run from requirement files; the WebAssembly module, the browser page, and
+the parallel solution of divided networks; grid-connection tests run from requirement files;
+dependent sources (VCVS, VCCS, CCCS, CCVS) solved within the time step; the WebAssembly module, the browser page, and
 the circuit and control diagrams linked with diagnostics and results.
 
 Not decided, and open for discussion in the issues:

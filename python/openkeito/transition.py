@@ -83,6 +83,7 @@ from .convert import (
     machine_rating_for,
     model_version,
     summarize,
+    version_rank,
 )
 
 __all__ = [
@@ -213,6 +214,16 @@ def _check_pss(p: dict[str, float]) -> None:
                              "or both 0 for no stage")
     if not p["minimum_pu"] <= 0 <= p["maximum_pu"] or p["minimum_pu"] == p["maximum_pu"]:
         raise ValueError("pss: the limits must enclose 0 (minimum_pu <= 0 <= maximum_pu, not both 0)")
+
+
+def _format_version(model: dict[str, Any]) -> str:
+    """The format version of a transition model: its own, raised to what its
+    components need and to "0.5" when it has controls; never lowered. The
+    versions are compared as numbers ("0.10" is later than "0.5")."""
+    needed = [model.get("version", "0.4"), model_version(model["components"])]
+    if model.get("controls"):
+        needed.append("0.5")
+    return max(needed, key=version_rank)
 
 
 def add_machine_controls(
@@ -1685,11 +1696,7 @@ def build_sequence(
     # Whole time steps, so that the last grid point is the end.
     end_s = round(end_s / step) * step
     components = model["components"]
-    ver = model_version(components)
-    if ver == "0.6" or model.get("version") == "0.6":
-        model["version"] = "0.6"
-    elif model["controls"] and model.get("version", "0.4") < "0.5":
-        model["version"] = "0.5"
+    model["version"] = _format_version(model)
     model["simulation"]["end_time_s"] = end_s
     model["name"] = f"{model.get('name', 'network')}: {name}"
     settled = begin[1:] + [end_s]

@@ -17,8 +17,9 @@ contributors.
 - Use a new `--out` directory for every run. Read `summary.json`: require
   `status == "completed"`, then check `events` and `warnings` before interpreting the CSV.
 - Exit code 0 is necessary but not sufficient; the summary decides.
-- For power electronics (PWM, rectifiers) set `"switching": "interpolated"` in `simulation`;
-  the default `grid` moves every switching instant to a grid point.
+- For power electronics (PWM, rectifiers) use `"switching": "interpolated"` in `simulation`:
+  it is the default from format `"0.10"` on; in a model of an older version the default
+  `grid` moves every switching instant to a grid point, so set it there.
 - Before running a binary from `target/`, check `openkeito --version` against `Cargo.toml`:
   `target/release` keeps an old build until `cargo build --release` is run again.
 - The MCP server (`openkeito-mcp`) reads and writes only under its root folder; give paths
@@ -88,7 +89,7 @@ contributors.
 - The software follows SemVer 2.0.0. The single source of the version is `version` in
   `[workspace.package]` of `Cargo.toml`; every crate inherits it, and `openkeito --version`
   and `summary.json` report it.
-- The `version` field of the model format (now `"0.9"`) is separate from the software
+- The `version` field of the model format (now `"0.10"`) is separate from the software
   version. Change it only when the format changes, and say so in the CHANGELOG.
 - To release: take the commits since the last tag and choose the next version (while
   0.y.z, a breaking change or `feat` raises y, `fix` or `perf` raises z). Update `version`

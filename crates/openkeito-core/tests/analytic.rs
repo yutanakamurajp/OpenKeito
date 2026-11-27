@@ -298,7 +298,9 @@ fn a_node_fed_only_by_a_current_source_is_reported_by_name() {
     );
     let err = build(&m).run(|_, _| Ok(())).unwrap_err();
     match &err {
-        SimError::Singular { unknown, time_s } => {
+        SimError::Singular {
+            unknown, time_s, ..
+        } => {
             assert_eq!(unknown, "V(n1)");
             assert_eq!(*time_s, 1e-5);
         }

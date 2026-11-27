@@ -170,6 +170,15 @@ def model_version(components: list[dict[str, Any]]) -> str:
     return "0.5" if any(c["type"] in FORMAT_0_5_TYPES for c in components) else "0.4"
 
 
+def version_rank(version: Any) -> tuple[int, ...]:
+    """The rank of a format version: "0.10" is later than "0.5" and "0.9" (a
+    version that is not one ranks lowest)."""
+    try:
+        return tuple(int(x) for x in str(version).split("."))
+    except ValueError:
+        return ()
+
+
 def model_document(
     name: str,
     description: str,

@@ -368,7 +368,7 @@ impl Simulator {
             unknown.dedup_by(|a, b| a.path == b.path);
             return Err(unknown);
         }
-        let controls = Controls::new(&m.controls, h, |i| measurement_slot[i]);
+        let controls = Controls::new(&m.controls, h, &m.version, |i| measurement_slot[i]);
         let signal_names = written;
 
         let outputs: Vec<model::Output> = match &m.outputs {
@@ -711,6 +711,11 @@ impl Simulator {
             PartError::Singular(k) => SimError::Singular {
                 time_s: t,
                 unknown: label(k),
+                dependent_sources: self.elements[self.layout.parts[p].elements.clone()]
+                    .iter()
+                    .filter(|e| e.is_dependent_source())
+                    .map(|e| e.name().to_string())
+                    .collect(),
             },
             PartError::NonFinite(k) => SimError::NonFinite {
                 time_s: t,

@@ -5,8 +5,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::check::{
-    check_bus, check_component, check_node, check_signal, positive, topology, valid_name, Edge,
-    Sets,
+    check_bus, check_component, check_node, check_signal, positive, singular_gains, topology,
+    valid_name, Edge, Sets,
 };
 use crate::components::{
     expanded, owner_of_block, Branch, BusRef, Component, ComponentInitialization, SteadyState,
@@ -199,6 +199,7 @@ pub fn validate(model: &Model) -> Vec<Diagnostic> {
         component_names: &component_names,
         components: &model.components,
         time_step_s: sim.time_step_s,
+        version: &model.version,
     };
     for (i, c) in model.controls.iter().enumerate() {
         let p = format!("controls[{i}]");
@@ -345,6 +346,22 @@ fn additions(model: &Model) -> Vec<(&'static str, String)> {
         if version != CONTROLS_SINCE {
             v.push((version, format!("controls[{i}] ({})", c.type_name())));
         }
+        // Operators and functions that a later version added to expression.
+        if let Control::Expression(e) = c {
+            if let Some(a) = e
+                .compile_for(&model.version)
+                .ok()
+                .and_then(|c| c.additions().first().cloned())
+            {
+                v.push((
+                    a.version,
+                    format!(
+                        "controls[{i}].expression ({} at character {})",
+                        a.what, a.column
+                    ),
+                ));
+            }
+        }
     }
     if let Some(outputs) = &model.outputs {
         for (i, o) in outputs.iter().enumerate() {
@@ -383,7 +400,7 @@ fn additions(model: &Model) -> Vec<(&'static str, String)> {
 /// in the last list (and that version as `since` in its `ComponentSpec` or
 /// `ControlSpec`); a test keeps the two in step. A model that declares an
 /// older version and uses the addition then gets E102.
-const VERSION_ADDITIONS: [(&str, &[&str]); 8] = [
+const VERSION_ADDITIONS: [(&str, &[&str]); 9] = [
     (
         "0.2",
         &[
@@ -479,6 +496,17 @@ const VERSION_ADDITIONS: [(&str, &[&str]); 8] = [
     ),
     ("0.8", &["expression"]),
     ("0.9", &["thyristor"]),
+    (
+        "0.10",
+        &[
+            "vcvs",
+            "vccs",
+            "cccs",
+            "ccvs",
+            "the comparison and logical operators of expression",
+            "the functions acos, asin, floor, ceil, round and trunc of expression",
+        ],
+    ),
 ];
 
 /// "a", "a and b" or "a, b and c".
@@ -854,6 +882,26 @@ impl Numbered {
                         }
                     }
                 }
+                Branch::Dependent {
+                    kind,
+                    input,
+                    output,
+                    gain,
+                } => {
+                    let [i0, i1] = input.map(|n| self.of(n));
+                    let [o0, o1] = output.map(|n| self.of(n));
+                    edges.push((
+                        owner,
+                        Edge::Dependent {
+                            kind,
+                            input: (i0, i1),
+                            output: (o0, o1),
+                            // A gain that is not finite is reported on its
+                            // own (E130).
+                            gain: if gain.is_finite() { gain } else { 0.0 },
+                        },
+                    ));
+                }
             }
         }
     }
@@ -897,9 +945,36 @@ fn named(model: &Model, members: &[usize]) -> String {
 
 const LOOP_HINT: &str = "A voltage source, a three-phase source without impedance, a closed \
     switch, a fault without resistance and an ideal transformer are ideal branches: they have \
-    no impedance that would share a current between them. Put a small resistor in series with \
-    one of them (such as 1e-3 ohm), give the source an \"impedance\", or remove one of two \
-    parallel sources or switches.";
+    no impedance that would share a current between them. So are the output of a vcvs or a \
+    ccvs and the sense port of a cccs or a ccvs. Put a small resistor in series with one of \
+    them (such as 1e-3 ohm), give the source an \"impedance\", or remove one of two parallel \
+    sources or switches.";
+
+const GAIN_HINT: &str = "Dependent sources whose gains close a loop of gain exactly 1 leave a \
+    voltage or a current undetermined: a vcvs that measures its own output with gain 1, two \
+    that measure each other's output with k1 k2 = 1, a cccs whose output current flows through \
+    its own sense port with gain 1, a ccvs of 0 ohm across its own sense port. Change a gain, or \
+    put a resistor into the loop.";
+
+const SHAPE_HINT: &str = "The output of a vcvs holds a voltage and a sense port is a short \
+    circuit; neither shares a current with the other. In a loop of such branches, such as the \
+    output of a vcvs across the sense port of a cccs, the current around the loop is determined \
+    only by a cccs or ccvs that measures it and whose output changes the voltage that the vcvs \
+    of the loop measures (W144); here none does, whatever the gains (such as a cccs that feeds \
+    only a load, or a node whose voltage the vcvs does not measure). Put a small resistor (such \
+    as 1e-3 ohm) into the loop. A node that \
+    only current sources, the outputs of vccs and cccs and control ports reach needs a resistor \
+    to gnd instead: a control port draws no current and holds no voltage.";
+
+const GAIN_LOOP_HINT: &str = "The current around a loop of the outputs of vcvs or ccvs and \
+    sense ports is determined only through the gains: by the transresistance of a ccvs whose \
+    output is in the loop (a ccvs across its own sense port carries r I = 0, so I = 0 when \
+    r != 0), or by a cccs or ccvs that measures it and whose output changes the voltage that \
+    the vcvs of the loop measures (such as a cccs that feeds the node that the vcvs measures). \
+    A measured current that does not change that voltage is determined by nothing (E145), even \
+    when it flows back into the circuit elsewhere, but validation does not check a \
+    group of more than 600 unknowns for that. If the run stops with E200, put a small resistor \
+    (such as 1e-3 ohm) into the loop.";
 
 const FLOATING_HINT: &str = "A current source, an open switch and a fault that has not started \
     (or is cleared) hold no voltage. Connect each of these nodes to the rest of the circuit \
@@ -1048,6 +1123,61 @@ fn check_ideal_branches(model: &Model, d: &mut Vec<Diagnostic>) {
         );
     }
 
+    // Dependent sources whose gains make the equations singular, and loops
+    // whose current follows from the gains, in the state at t = 0 (of a
+    // circuit without the errors above).
+    if start.loops.is_empty() && start.more_loops == 0 && start.floating.is_empty() {
+        let at_start: Vec<(usize, Edge)> = fixed.iter().cloned().chain(states.concat()).collect();
+        let singular = singular_gains(nodes.names.len(), &at_start);
+        for s in &singular {
+            let members = &s.owners;
+            let error = if s.whatever_the_gains {
+                Diagnostic::error(
+                    "E145",
+                    format!("components[{}]", members[0]),
+                    format!(
+                        "the circuit equations at t = 0 are singular whatever the gains of {}: \
+                         the current around a loop of their ideal branches (outputs of vcvs or \
+                         ccvs, sense ports of cccs or ccvs), or a node voltage, is not determined",
+                        named(model, members)
+                    ),
+                    SHAPE_HINT,
+                )
+            } else {
+                Diagnostic::error(
+                    "E144",
+                    format!("components[{}]", members[0]),
+                    format!(
+                        "the gains of {} make the circuit equations singular at t = 0: a voltage \
+                         or a current is not determined, whatever the other components are",
+                        named(model, members)
+                    ),
+                    GAIN_HINT,
+                )
+            };
+            d.push(error.about_components(names_of(model, members)));
+        }
+        let in_singular = |i: &usize| singular.iter().any(|s| s.owners.contains(i));
+        for members in &start.gain_loops {
+            if members.iter().any(in_singular) {
+                continue;
+            }
+            d.push(
+                Diagnostic::warning(
+                    "W144",
+                    format!("components[{}]", members[0]),
+                    format!(
+                        "the ideal branches of {} form a loop at t = 0 whose current is \
+                         determined only by the gains of the dependent sources",
+                        named(model, members)
+                    ),
+                    GAIN_LOOP_HINT,
+                )
+                .about_components(names_of(model, members)),
+            );
+        }
+    }
+
     // The states that the actions of the switches and faults lead to.
     let grid_points: BTreeSet<u64> = switching.iter().flat_map(|(_, k)| k).copied().collect();
     let mut known_loops = start.loops;
@@ -1174,6 +1304,12 @@ fn is_series_component(c: &Component) -> bool {
         | Component::SynchronousMachine(_)
         | Component::GridFollowingConverter(_)
         | Component::Fault(_) => false,
+        // A port between two nodes other than gnd.
+        Component::Vcvs(_) | Component::Vccs(_) | Component::Cccs(_) | Component::Ccvs(_) => c
+            .spec()
+            .connections()
+            .iter()
+            .any(|(a, b)| a != GROUND && b != GROUND),
     }
 }
 
@@ -1631,6 +1767,15 @@ mod tests {
     }
 
     #[test]
+    fn the_hint_of_w144_names_the_limit_of_the_check_of_the_gains() {
+        let limit = format!(
+            "more than {} unknowns",
+            crate::check::MAX_GAIN_CHECK_UNKNOWNS
+        );
+        assert!(GAIN_LOOP_HINT.contains(&limit), "{GAIN_LOOP_HINT}");
+    }
+
+    #[test]
     fn every_supported_version_after_the_first_has_its_additions() {
         let listed: Vec<&str> = VERSION_ADDITIONS.iter().map(|(v, _)| *v).collect();
         assert_eq!(listed, SUPPORTED_VERSIONS[1..]);
@@ -1709,13 +1854,13 @@ mod tests {
         for version in SUPPORTED_VERSIONS {
             assert!(validate(&model(version)).is_empty(), "version {version}");
         }
-        let d = validate(&model("0.10"));
+        let d = validate(&model("0.11"));
         assert_eq!(d.len(), 1);
         assert_eq!(d[0].code, "E101");
-        assert!(d[0].hint.contains("\"version\": \"0.9\""), "{}", d[0].hint);
+        assert!(d[0].hint.contains("\"version\": \"0.10\""), "{}", d[0].hint);
         assert!(
             d[0].hint
-                .contains("0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9"),
+                .contains("0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.10"),
             "{}",
             d[0].hint
         );

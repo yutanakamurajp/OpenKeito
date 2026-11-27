@@ -164,7 +164,7 @@ mod tests {
 
     fn controls(h: f64, json: serde_json::Value) -> Controls {
         let blocks: Vec<model::Control> = serde_json::from_value(json).unwrap();
-        Controls::new(&blocks, h, |_| 0)
+        Controls::new(&blocks, h, model::VERSION, |_| 0)
     }
 
     #[test]

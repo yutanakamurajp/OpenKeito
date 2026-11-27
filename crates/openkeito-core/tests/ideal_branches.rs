@@ -14,13 +14,24 @@ use serde_json::{json, Value};
 
 const H: f64 = 1e-4;
 
+/// A model of version 0.5; of version 0.10 with switching instants at the
+/// grid points (the default of 0.5) when it has dependent sources.
 fn model(components: Value) -> Value {
-    json!({
+    let dependent = components.as_array().is_some_and(|c| {
+        c.iter()
+            .any(|c| ["vcvs", "vccs", "cccs", "ccvs"].contains(&c["type"].as_str().unwrap_or("")))
+    });
+    let mut m = json!({
         "format": "openkeito-model",
         "version": "0.5",
         "simulation": {"time_step_s": H, "end_time_s": 20.0 * H},
         "components": components,
-    })
+    });
+    if dependent {
+        m["version"] = json!("0.10");
+        m["simulation"]["switching"] = json!("grid");
+    }
+    m
 }
 
 /// The code of the errors with which validation rejects the circuit: one
@@ -48,7 +59,10 @@ fn singular(components: Value) -> (Vec<&'static str>, f64, String) {
     match sim.run(|_, _| Ok(())) {
         Err(e @ SimError::Singular { .. }) => {
             assert_eq!(e.to_diagnostic().code, "E200");
-            let SimError::Singular { time_s, unknown } = e else {
+            let SimError::Singular {
+                time_s, unknown, ..
+            } = e
+            else {
                 unreachable!()
             };
             (warnings, time_s, unknown)
@@ -339,6 +353,56 @@ fn a_bus_that_only_a_fault_connects() {
 }
 
 #[test]
+fn the_ideal_branches_of_dependent_sources() {
+    // The output of a vcvs and a voltage source in parallel: their currents
+    // have the same column.
+    pair(
+        |at| {
+            json!([
+                dc("E1", ["n1", "gnd"]),
+                resistor("R1", ["n1", "c"]),
+                resistor("R2", ["c", "gnd"]),
+                {"type": "vcvs", "name": "A1", "control": ["c", "gnd"], "output": ["n2", "gnd"], "gain_v_per_v": 3.0},
+                closing("S1", ["n1", "n2"], at),
+            ])
+        },
+        "E142",
+        "W142",
+    );
+    // The sense port of a cccs short-circuited by a switch: the same row.
+    pair(
+        |at| {
+            json!([
+                dc("E1", ["n1", "gnd"]),
+                resistor("R1", ["n1", "n2"]),
+                {"type": "cccs", "name": "F1", "sense": ["n2", "gnd"], "output": ["gnd", "o"], "gain_a_per_a": 2.0},
+                resistor("R2", ["o", "gnd"]),
+                closing("S1", ["n2", "gnd"], at),
+            ])
+        },
+        "E142",
+        "W142",
+    );
+    // A node that the output of a cccs and a current source feed, once a
+    // switch has opened.
+    let unknown = pair(
+        |at| {
+            json!([
+                dc("E1", ["n1", "gnd"]),
+                resistor("R1", ["n1", "s"]),
+                {"type": "cccs", "name": "F1", "sense": ["s", "gnd"], "output": ["gnd", "x"], "gain_a_per_a": 2.0},
+                current("J1", ["x", "gnd"]),
+                opening("S1", ["x", "y"], at),
+                resistor("R2", ["y", "gnd"]),
+            ])
+        },
+        "E143",
+        "W143",
+    );
+    assert_eq!(unknown, "V(x)");
+}
+
+#[test]
 fn circuits_that_validation_accepts_run() {
     // The same circuits with what the hints of E142 and E143 say: a resistor
     // in series in the loop, a resistor from the node to gnd.
@@ -372,6 +436,20 @@ fn circuits_that_validation_accepts_run() {
         {"type": "diode", "name": "D1", "nodes": ["gnd", "n3"]},
         current("J1", ["gnd", "n3"]),
     ]));
+    // A ccvs across its own sense port: r I = 0 holds the current (W144,
+    // which `completes` does not allow, so the warning is checked here).
+    let loop_of_gains = json!([
+        current("J1", ["gnd", "o"]),
+        resistor("R1", ["o", "gnd"]),
+        {"type": "ccvs", "name": "H1", "sense": ["o", "gnd"], "output": ["o", "gnd"], "transresistance_ohm": 50.0},
+    ]);
+    let loaded = openkeito_model::load_str(&model(loop_of_gains).to_string()).unwrap();
+    let warnings: Vec<&str> = loaded.warnings.iter().map(|w| w.code).collect();
+    assert_eq!(warnings, ["W144"]);
+    Simulator::from_model(&loaded.model)
+        .unwrap()
+        .run(|_, _| Ok(()))
+        .expect("run completes");
     // An ideal transformer alone holds the bus behind it.
     completes(json!([
         ideal_source("S1", "b1"),

@@ -10,6 +10,7 @@
 //! by the expansion of its component in `netlist`.
 
 mod converters;
+mod dependent;
 mod lines;
 mod machines;
 mod nonlinear;
@@ -19,6 +20,7 @@ mod switches;
 mod transformers;
 
 pub(crate) use converters::*;
+pub(crate) use dependent::*;
 pub(crate) use lines::*;
 pub(crate) use machines::*;
 pub(crate) use nonlinear::*;
@@ -127,6 +129,11 @@ pub trait Element: Send {
     /// Name of extra unknown `k`, for error messages.
     fn aux_label(&self, _k: usize) -> String {
         format!("I({})", self.name())
+    }
+    /// True for a dependent source (`vcvs`, `vccs`, `cccs`, `ccvs`), whose
+    /// gains can make the equations singular (for the hint of E200).
+    fn is_dependent_source(&self) -> bool {
+        false
     }
     /// Receives the conditions of the run, once before it starts: the time
     /// step, the method and every stage the solver will use. The element

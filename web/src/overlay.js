@@ -50,6 +50,9 @@ const STATES = {
   fault: ["no fault", "fault"],
 };
 
+/// The dependent sources whose current is measured by a sense port.
+const SENSED = new Set(["cccs", "ccvs"]);
+
 /// A value with four significant digits, an SI prefix and its unit:
 /// "−12.35 kA", "1.5 mV", "0 V"; without a unit (a signal) five digits.
 export function formatQuantity(value, unit) {
@@ -125,10 +128,16 @@ export function bindColumns(topology, columns, header) {
       if (suffix) {
         const letter = column.kind === "branch_current" ? "I" : "U";
         entry.owner = `component:${column.target}`;
-        entry.phase = suffix.phase;
-        const shown = suffix.phase === null || PHASES.includes(suffix.phase);
-        const side = suffix.terminal === null ? "" : String(suffix.terminal);
-        entry.slot = shown && (side === "" || side === "0" || side === "1") ? `${letter}${side}` : null;
+        if (SENSED.has(components.get(column.target).type)) {
+          // A dependent source with a sense port: the sense current I(F1.sense)
+          // at the port on the left, the output current I(F1) on the right.
+          entry.slot = suffix.phase === "sense" ? `${letter}0` : suffix.phase === null ? `${letter}1` : null;
+        } else {
+          entry.phase = suffix.phase;
+          const shown = suffix.phase === null || PHASES.includes(suffix.phase);
+          const side = suffix.terminal === null ? "" : String(suffix.terminal);
+          entry.slot = shown && (side === "" || side === "0" || side === "1") ? `${letter}${side}` : null;
+        }
       }
     }
     if (entry.owner === null) unbound.push(column.name);

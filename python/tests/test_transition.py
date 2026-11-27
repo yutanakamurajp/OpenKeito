@@ -72,6 +72,25 @@ def island(time_step_s: float, end_time_s: float, controls: dict | None = None) 
     return model, machine
 
 
+def test_the_format_version_is_raised_as_a_number_and_never_lowered():
+    from openkeito.convert import version_rank
+    from openkeito.transition import _format_version
+
+    assert version_rank("0.10") > version_rank("0.9") > version_rank("0.5")
+    assert version_rank("x") < version_rank("0.4")
+    load = {"type": "resistor", "name": "R1", "nodes": ["a", "gnd"], "resistance_ohm": 1.0}
+    tap = {**load, "tap_changes": [{"time_s": 0.1, "ratio": 1.0}]}
+    gain = {"type": "gain", "name": "k", "input": "x", "gain": 1.0}
+    # "0.10" < "0.5" as text: a model of version 0.10 with controls kept
+    # its version only when compared as numbers.
+    assert _format_version({"version": "0.10", "components": [load], "controls": [gain]}) == "0.10"
+    assert _format_version({"version": "0.10", "components": [tap], "controls": []}) == "0.10"
+    assert _format_version({"version": "0.4", "components": [load], "controls": [gain]}) == "0.5"
+    assert _format_version({"version": "0.5", "components": [tap], "controls": [gain]}) == "0.6"
+    assert _format_version({"version": "0.6", "components": [load], "controls": [gain]}) == "0.6"
+    assert _format_version({"components": [load], "controls": []}) == "0.4"
+
+
 def test_machine_inputs_are_those_of_the_machine():
     """The field voltage and the torque that ``machine_inputs`` computes for
     an operating point are those the machine itself starts with. They agree

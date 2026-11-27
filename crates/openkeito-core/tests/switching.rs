@@ -952,3 +952,38 @@ fn the_examples_do_not_block_more_than_one_device_with_default_resistances() {
     }
     assert!(seen >= 11);
 }
+
+#[test]
+fn from_format_0_10_on_the_instants_are_interpolated_by_default() {
+    // The buck converter without "switching": a model of 0.10 runs as with
+    // "interpolated", one of 0.9 as with "grid", to the last bit.
+    let bits = |r: &Run| -> (Vec<Vec<u64>>, Vec<(String, u64)>) {
+        let rows = r
+            .rows
+            .iter()
+            .map(|row| row.iter().map(|x| x.to_bits()).collect())
+            .collect();
+        let events = r
+            .stats
+            .events
+            .iter()
+            .map(|e| (e.component.clone(), e.time_s.to_bits()))
+            .collect();
+        (rows, events)
+    };
+    let base = CCM.model("trapezoidal", 2e-6, 1e-3, [0.0, 0.0]);
+    let of = |version: &str, switching: Option<&str>| {
+        let mut m = base.clone();
+        m["version"] = json!(version);
+        if let Some(s) = switching {
+            m["simulation"]["switching"] = json!(s);
+        }
+        run_model(&m)
+    };
+    let (default_new, interpolated) = (of("0.10", None), of("0.10", Some("interpolated")));
+    let (default_old, grid) = (of("0.9", None), of("0.9", Some("grid")));
+    assert_eq!(bits(&default_new), bits(&interpolated));
+    assert_eq!(bits(&default_old), bits(&grid));
+    assert!(default_new.stats.instants_within_steps > 0);
+    assert_eq!(default_old.stats.instants_within_steps, 0);
+}

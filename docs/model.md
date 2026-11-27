@@ -9,7 +9,7 @@ conventions that the two cannot say:
 - [components](#components), [results of a run](#results-of-a-run),
   [batch files](#batch-files) and the [topology](#topology) of a model;
 - [conventions](#conventions) and the simulation settings;
-- [three-phase circuits](#three-phase-circuits),
+- [dependent sources](#dependent-sources), [three-phase circuits](#three-phase-circuits),
   [steady-state initialization](#steady-state-initialization), [controls](#controls) with
   [controlled sources](#controlled-sources) and the
   [grid-following converter](#grid-following-converter), the
@@ -37,8 +37,8 @@ The methods behind them are in [numerical-method.md](numerical-method.md).
 }
 ```
 
-The top level has `format` (`"openkeito-model"`), `version` (`"0.9"` is the current version;
-`"0.1"` to `"0.8"` are read as before), the free texts `name` and
+The top level has `format` (`"openkeito-model"`), `version` (`"0.10"` is the current version;
+`"0.1"` to `"0.9"` are read as before), the free texts `name` and
 `description`, `simulation`, `components`, `controls`, `outputs` and, for `openkeito scan`,
 `frequency_scan`. A field that the schema does not have is an error.
 
@@ -52,7 +52,8 @@ The top level has `format` (`"openkeito-model"`), `version` (`"0.9"` is the curr
 | `diode`, `controlled_switch`, `thyristor` | resistors with two values; the diode by its voltage and current, the switch by a gate signal, the thyristor as a diode that a gate signal must fire to turn on |
 | `nonlinear_resistor`, `nonlinear_inductor` | piecewise-linear characteristics: surge arresters, saturation |
 | `transformer` | single-phase two-winding transformer, with optional saturation |
-| `controlled_voltage_source`, `controlled_current_source` | sources whose value is a control signal |
+| `controlled_voltage_source`, `controlled_current_source` | sources whose value is a control signal (one time step late) |
+| `vcvs`, `vccs`, `cccs`, `ccvs` | [dependent sources](#dependent-sources): a constant gain from a voltage or a current of the circuit, within the time step |
 | `three_phase_source` | balanced voltage source behind a coupled impedance |
 | `three_phase_current_source` | balanced current injection |
 | `three_phase_load` | constant impedance in star for a given P and Q |
@@ -67,7 +68,7 @@ The top level has `format` (`"openkeito-model"`), `version` (`"0.9"` is the curr
 | `grid_following_converter` | averaged inverter with its phase-locked loop, current control and limits |
 
 The control blocks are listed under [Controls](#controls). `openkeito components` is the
-complete list (27 components and 32 control blocks in format version `"0.9"`).
+complete list (31 components and 32 control blocks in format version `"0.10"`).
 
 ## Results of a run
 
@@ -196,7 +197,7 @@ only, and has neither a path nor a time in it.
   branch voltage `U(<name>)`.
 - Optional diagram layout overrides use a separate sidecar JSON file (`"format": "openkeito-layout"`,
   `"version": "0.1"`, with per-face `rails` `dx` and `items` `dx`/`dy` offsets), leaving the
-  model JSON (`"0.9"`), `openkeito schema` and `openkeito topology` unchanged. Unlisted
+  model JSON (`"0.10"`), `openkeito schema` and `openkeito topology` unchanged. Unlisted
   components fall back to the deterministic automatic layout.
 
 ## Conventions
@@ -252,7 +253,7 @@ only, and has neither a path nor a time in it.
 - PWM edges fall on grid points: the duty realized differs from the reference by less than
   `time_step_s × frequency`. Choose a duty or carrier whose crossings do not fall exactly
   on grid points (D = 0.4 with 100 steps per period does), or rounding decides them.
-- `simulation.switching`: `grid` (default) is what the four items above describe.
+- `simulation.switching`: `grid` is what the four items above describe.
   `interpolated` places every switching instant within its time step and splits the step
   there: a `switch`, a `fault` and a `step` waveform act at their times, a diode and a
   contact that opens at a current zero at the zero crossing, a `controlled_switch` at the
@@ -263,9 +264,12 @@ only, and has neither a path nor a time in it.
   themselves, no longer grid points. The error of a switching instant falls from first to
   second order in `time_step_s`: a 10 kHz buck converter at 10 µs is 1000 times more
   accurate than with `grid` at 1 µs, for about 20 % more time per step. The summary counts
-  the instants (`solver.instants_within_steps`). `grid` stays the default so that the events
-  of existing models keep their times; **for power electronics (PWM, rectifiers), use
-  `interpolated`** (`examples/buck_interpolated.json` against `examples/buck.json`). See
+  the instants (`solver.instants_within_steps`). The default depends on the format
+  version: `interpolated` for a model of version `"0.10"` or later, `grid` for an older
+  one, so that the events and rows of existing models stay as they were (reading a model
+  of `"0.10"` without the field sets it to `"interpolated"`, and the summary reports
+  it). **For power electronics (PWM, rectifiers), use `interpolated`**; a model of an
+  older version sets it (`examples/buck_interpolated.json` against `examples/buck.json`). See
   [numerical-method.md](numerical-method.md#switching-instants-within-a-step)
   for the method and its limits (W270).
 - `simulation.output_interval_steps` (default 1) records one row every n steps.
@@ -293,7 +297,8 @@ only, and has neither a path nor a time in it.
 - `openkeito validate` rejects two kinds of circuits whose equations have no single
   solution, which a run would only find as E200. E142: a loop of ideal branches (voltage
   sources, three-phase sources without `impedance`, closed switches, faults without
-  resistance, ideal transformers), in which nothing divides the current: put a small
+  resistance, ideal transformers, the outputs of `vcvs` and `ccvs` and the sense ports of
+  `cccs` and `ccvs`), in which nothing divides the current: put a small
   resistor in series or give the source an impedance. E143: nodes that only current
   sources, open switches and faults that have not started connect to the rest, so that
   nothing holds their voltage: add a resistor to gnd or across the switch. Both look at
@@ -304,7 +309,8 @@ only, and has neither a path nor a time in it.
   later than its command, so a loop that lasts only until then is not seen. A component
   with a resistance, an inductance or a capacitance holds its nodes: a `diode` and a
   `controlled_switch` (or `thyristor`) by their off resistance, and a node between capacitors has the
-  voltage that their charges give it.
+  voltage that their charges give it. Circuits with dependent sources have more
+  checks, E144, E145 and W144 (see [Dependent sources](#dependent-sources)).
 - Format version `"0.2"` adds diodes, controlled switches, controls, signal outputs and
   `output_interval_steps`; `"0.3"` adds the three-phase components below, `bus_voltage`
   outputs, `simulation.initialization`, `simulation.linear_solver` and `frequency_scan`;
@@ -320,8 +326,114 @@ only, and has neither a path nor a time in it.
   `piecewise_linear` control block, signal-name limits on `integrator`, `lag`, `pi` and
   `limiter`, `anti_windup` (`"conditional"` or `"state"`) on `pi`, and
   `"initialization": "exclude"` on circuit components; `"0.8"` adds the `expression`
-  control block; `"0.9"` (the current version) adds the `thyristor`. Models of an older
-  version are read as before.
+  control block; `"0.9"` adds the `thyristor`; `"0.10"` (the current version) adds the
+  [dependent sources](#dependent-sources) `vcvs`, `vccs`, `cccs` and `ccvs`, the comparison
+  and logical operators and the functions `acos`, `asin`, `floor`, `ceil`, `round` and
+  `trunc` of [`expression`](#controls), and from it on `simulation.switching` defaults to
+  `interpolated`. Models of an older version are read as before (in them, the names of the
+  six functions stay free for signals and variables of an `expression`).
+
+## Dependent sources
+
+```json
+{"type": "vcvs", "name": "A1", "control": ["gnd", "m"], "output": ["out", "gnd"], "gain_v_per_v": 1e5},
+{"type": "vccs", "name": "G1", "control": ["c", "gnd"], "output": ["gnd", "o"], "transconductance_s": 0.02},
+{"type": "cccs", "name": "F1", "sense": ["p", "x"], "output": ["gnd", "s"], "gain_a_per_a": 16.5},
+{"type": "ccvs", "name": "H1", "sense": ["s1", "s2"], "output": ["e", "gnd"], "transresistance_ohm": 75.0}
+```
+
+The four controlled sources of modified nodal analysis (format version `"0.10"`): a voltage
+(`vcvs`) or a current (`vccs`) proportional to a voltage of the circuit, and a current
+(`cccs`) or a voltage (`ccvs`) proportional to a current. The relation is part of the
+circuit equations, so it holds within each time step; a `controlled_voltage_source` or
+`controlled_current_source` that follows a control signal is one time step late instead
+([Controlled sources](#controlled-sources)). The gain is a constant, and the sources are
+single-phase (three of them make a three-phase one).
+
+- **Ports.** Each source has two ports of two nodes. `control` [+, −] gives the
+  controlling voltage V(control[0]) − V(control[1]) and draws no current: it connects
+  nothing, so a node that only control ports reach is not connected to gnd (E141).
+  `sense` [from, to] is an ideal branch of 0 V placed in the circuit (an ammeter); the
+  controlling current is the current from `sense[0]` through it to `sense[1]`. A source
+  measures the current of its own sense port only: to measure the current of a
+  component, put the sense port in series with it.
+- **Output and signs.** `vcvs`: V(output[0]) − V(output[1]) = `gain_v_per_v`·V(control);
+  `ccvs`: the same with `transresistance_ohm`·I(sense). Their output current I(<name>) is
+  positive from `output[0]` through the source to `output[1]`, as for a `voltage_source`.
+  `vccs`: the current `transconductance_s`·V(control) flows from `output[0]` through the
+  source to `output[1]`, that is, into `output[1]`, as for a `current_source`; `cccs`: the
+  same with `gain_a_per_a`·I(sense). The columns are `I(<name>)` (the output current) and,
+  for `cccs` and `ccvs`, `I(<name>.sense)`; there is no `U(<name>)`: record the node
+  voltages. A gain may be 0 (an output of 0 V, or an open output) and must be finite (E130).
+  The two nodes of a port must differ (E123); a sense port and an output may be at the
+  same two nodes.
+- **Within the step.** An inverting amplifier with a `vcvs` of gain A = 1e5 (or 1e6) as the
+  operational amplifier, R_f/R_in = 10, has the gain −(R_f/R_in)/(1 + (1 + R_f/R_in)/A) of
+  the closed form to 3.3e-16 at every time step tried (10, 2.5 and 1 µs). Built with a
+  `controlled_voltage_source` that follows a `gain` block of −A on the measured inverting
+  input, the amplifier is one step late: the output grows by −A·R_in/(R_in + R_f) =
+  −9.09e3 per step, and at 10 µs the run stops with E251 at 0.77 ms
+  (`crates/openkeito-core/tests/dependent_sources.rs`).
+- **Ideal transformer.** Per phase, a `cccs` with its sense port from the primary node p to
+  an inner node x and its output from gnd into the secondary node s (gain n), and a `vcvs`
+  from x to gnd controlled by V(s) (gain n), give V(p) = n·V(s) and n times the primary
+  current out of s: an ideal transformer of ratio n. It agrees with
+  `three_phase_ideal_transformer` (three such phases against YNyn0) and with `transformer`
+  (with half the leakage impedance as R and L on each side) to 3.2e-13 of the peak with a
+  resistive load, an RL load that is switched on, a short circuit cleared at the current
+  zeros and from the steady state, and with a diode bridge to 1.1e-10 of the peak with the
+  switching instants within 9.0e-14 s; the row at t = 0+, the worst conditioned solution
+  of a run, agrees to the rounding bound of the solver (the condition estimate times the
+  machine epsilon) (`crates/openkeito-core/tests/ideal_transformer.rs`).
+- **Validation.** The output of a `vcvs` or a `ccvs` and a sense port are ideal branches:
+  in parallel with a voltage source or a closed switch, or in a loop of such branches,
+  they make the equations singular (E142, W142). The output of a `vccs` or a `cccs` is a
+  current source: a node that only it and other current sources reach is not held
+  (E143, W143). E144: gains that close a loop of gain exactly 1 — a `vcvs` that measures
+  its own output with gain 1, two that measure each other's output with k1·k2 = 1, a
+  `cccs` whose output current flows back through its own sense port with gain 1, a `ccvs`
+  of 0 Ω across its own sense port. Validation finds them by solving the equations of the
+  state at t = 0 of every connected group of the circuit that has dependent sources, with
+  its conductances drawn at random (twice, from a fixed seed): equations that are singular
+  for random conductances are singular for practically any. A group found singular is
+  solved twice more with its gains drawn at random too. When that is singular as well, no
+  gain helps, and the error is E145 in place of E144: the connections alone leave a
+  current or a voltage undetermined for any gain; its hint asks for a small resistor in
+  the loop, or one to gnd. Not checked: a group with more than 600 unknowns, the states
+  that switches reach later in the run, and gains near but not exactly at a singular
+  value; the run then stops with E200, whose hint names the dependent sources of the part
+  that is singular. W144: a loop of the outputs of `vcvs` or `ccvs` and sense ports, whose
+  current only the gains can determine. They do when the loop has the output of a `ccvs`
+  (across its own sense port, r·I = 0 gives I = 0 for r ≠ 0; with r = 0 it is E144), or
+  when the output of the `cccs` or `ccvs` that measures the current changes the voltage
+  that the `vcvs` of the loop measures: the output of a `vcvs` across the sense port of a
+  `cccs` whose output feeds the node the `vcvs` measures holds V(c) = 0, and β·I balances
+  the current into that node (with β = 0, or with k = 0, it is E144). The run then
+  completes. When the measured current does not change that voltage, nothing determines
+  it, whatever the gains, even when it flows back into the circuit: a `cccs` that only
+  feeds a load, or one that feeds node c while the `vcvs` measures the node i that a
+  voltage source holds (1e-3 Ω in the loop makes it valid). That is E145, and the run
+  does not start; in a group of more than 600 unknowns it stays W144, whose hint says
+  so, and the run stops with E200. E145 is also a node that
+  only current sources, the outputs of `vccs` and `cccs` and control ports reach (without
+  the control port it is E143): the row of the `vcvs` has its voltage, but the voltage
+  only sets the output, and nothing determines it.
+- **Conditioning.** A large gain raises the condition estimate of the matrix, from which
+  the solver sets the thresholds of the diode states and, with `"switching":
+  "interpolated"`, the shortest part of a split step. A precision rectifier (an
+  operational amplifier of gain 1e5 or 1e6 with two diodes) has a condition estimate of
+  1e3 and switches within 3.5e-13 s of the zeros of its input. Weakly held nodes count
+  more: with the DC side of a bridge held only by blocking diodes and 1 MΩ, the ideal
+  transformer built from dependent sources has a condition estimate 7.6 times that of
+  `transformer`, and a turn-off 1.1e-8 s before a grid point is taken at the grid point in
+  the one run and within the step in the other. Hold such nodes by a resistance (100 Ω in
+  the test) where the instants matter.
+- **Elsewhere.** The steady-state initialization and `openkeito scan` use the same
+  relations with phasors. A dependent source with `"initialization": "exclude"` is left
+  out of the phasor solution (open). A dependent source joins the parts of a divided
+  circuit: a `bergeron_line` whose two ends a dependent source connects does not divide
+  it (`solver.parts` in the summary), with the same rows as without the division. To keep
+  the division, connect the two areas only through the line.
 
 ## Three-phase circuits
 
@@ -478,7 +590,10 @@ version `"0.5"` for all but the first seven, `"0.7"` for `piecewise_linear`, and
   loop). Any other loop—including one through `piecewise_linear`, `expression` or through a
   signal-name limit on `integrator`, `lag`, `pi` or `limiter`, which depend on that signal at
   the same instant—is an error (E171); a loop through the circuit (a measurement of what the
-  controls act on) is always possible and has one time step of delay.
+  controls act on) is always possible and has one time step of delay. A proportional
+  relation that must hold within the time step (an amplifier, an ideal transformer, a
+  measuring transformer) is written with a [dependent source](#dependent-sources), not
+  with controls.
 - **Limits.** An `integrator` and a `lag` with `minimum` or `maximum` hold their state
   within the limits, so that it leaves a limit as soon as the input drives it back (no
   wind-up). An `integrator` with `"wrap": true` is folded back into `[minimum, maximum)`
@@ -512,11 +627,12 @@ version `"0.5"` for all but the first seven, `"0.7"` for `piecewise_linear`, and
 - **Errors while running.** A `quotient` whose denominator is 0 stops the run (E251) unless
   `minimum_denominator` is given (a denominator of smaller magnitude is replaced by it, with
   its sign); so does a `function` outside its domain, a non-finite result from `expression`
-  (such as division by zero, `sqrt` of a negative value, or `ln` <= 0) or a non-finite
-  signal limit. A loop that does not settle within
+  (such as division by zero, `sqrt` of a negative value, `ln` <= 0, `acos` or `asin` beyond
+  ±1, or a NaN in a comparison) or a non-finite signal limit. A loop that does not settle within
   100 passes stops the run with E250: reduce `time_step_s`. The summary counts the passes
   beyond the first of each grid point (`solver.control_loop_iterations`).
-- **Expression.** An `expression` block (`"0.8"`) has `name`, optional `inputs` (array of
+- **Expression.** An `expression` block (`"0.8"`; the comparison and logical operators
+  and six functions `"0.10"`) has `name`, optional `inputs` (array of
   signal names), optional `variables` (map from identifier to signal name, for aliases or
   signal names containing `.` such as `"v.d"`), and `expression` (expression string).
   - *Variables and constants:* any signal in `inputs` whose name is a valid identifier
@@ -526,16 +642,69 @@ version `"0.5"` for all but the first seven, `"0.7"` for `piecewise_linear`, and
     and Euler's number only when no variable of the same name is defined via `inputs` or
     `variables` (so a signal named `"e"` takes precedence). Syntax errors, undefined
     variables or functions, wrong argument counts and conflicting variable bindings are
-    reported as E243.
-  - *Operators and precedence (highest to lowest):* parentheses `(...)` and function calls
-    > exponentiation `^` (right-associative, and binding tighter than unary `+`/`-`, so
-    `-x^2` is `-(x^2)` and `x^-2` is `x^(-2)`) > unary `+`, `-` > `*`, `/` > `+`, `-`.
-  - *Functions (14, angles in radians):* single-argument `sin`, `cos`, `tan`, `atan`, `abs`,
+    reported as E243. The names of the functions are reserved: a signal of that name is
+    reached as `u0`, `u1`, ... or through `variables`. The six functions of `"0.10"` are
+    reserved only in models of `"0.10"` and later; a model of an older version that uses one
+    of the new operators or functions gets E102.
+  - *Operators and precedence (highest to lowest):*
+
+    | Level | Operators | Grouping |
+    |---|---|---|
+    | 1 | parentheses `(...)`, function calls | |
+    | 2 | `^` | right to left; binds tighter than the unary operators: `-x^2` is `-(x^2)`, `!x^2` is `!(x^2)`, `x^-2` is `x^(-2)` |
+    | 3 | unary `+`, `-`, `!` | right to left |
+    | 4 | `*`, `/` | left to right |
+    | 5 | `+`, `-` | left to right |
+    | 6 | `<`, `<=`, `>`, `>=` (`"0.10"`) | not chained |
+    | 7 | `==`, `!=` (`"0.10"`) | not chained |
+    | 8 | `&&` (`"0.10"`) | left to right |
+    | 9 | `\|\|` (`"0.10"`) | left to right |
+
+    Levels 3 to 9 are those of C (ISO/IEC 9899); C has no `^`. So `a + b < c` is
+    `(a + b) < c`, `a || b && c` is `a || (b && c)`, and `!x > 0` is `(!x) > 0`, not
+    `!(x > 0)`. A comparison whose operand is another comparison without parentheses
+    (`a < b < c`, `a == b == c`, `a < b == c`) is E243 at the second operator: C reads
+    `0 < x < 1` as `(0 < x) < 1`, which is true for every x, and that is seldom what is
+    meant. Write `(0 < x) && (x < 1)`, or put the inner comparison in parentheses to compare
+    its result. A single `=`, `&` or `|` is E243.
+  - *True and false (`"0.10"`):* a comparison or a logical operator gives 1 for true and
+    +0 for false. `!`, `&&` and `||` take any number that is not 0 (or −0) as true. `==` and
+    `!=` compare exactly: `0.1 + 0.2 == 0.3` is false. A NaN operand gives NaN (and so E251),
+    also where C would give false. `&&` and `||` evaluate both sides (no short circuit): in
+    `(x >= 0) && (sqrt(x) > 1)` the square root of a negative x is NaN and stops the run, so
+    guard the value itself, as in `sqrt(max(x, 0))`. To choose between two values,
+    `c*a + (1 - c)*b` works for a condition c of 1 or 0, but gives NaN where the value not
+    chosen is NaN or infinite; the `selector` block does not.
+  - *Functions (20, angles in radians):* single-argument `sin`, `cos`, `tan`, `atan`, `abs`,
     `sqrt`, `exp`, `ln`, `sign`; two-argument `atan2(y, x)`, `hypot(x, y)`, `pow(base, exp)`;
-    variadic (one or more arguments) `min`, `max`.
+    variadic (one or more arguments) `min`, `max`; and from `"0.10"` on, single-argument
+    `acos` (0 to π) and `asin` (−π/2 to π/2), defined for −1 ≤ x ≤ 1 and NaN beyond (E251;
+    a ratio such as `acos(x/hypot(x, y))` can exceed 1 by a rounding error, so limit it
+    with `acos(min(max(x/hypot(x, y), -1), 1))`), `floor` (the largest integer not above
+    x: `floor(-0.5)` = −1), `ceil` (the smallest integer not below x: `ceil(-0.5)` = −0),
+    `trunc` (toward 0: `trunc(-1.7)` = −1) and `round` (the nearest integer, halves away
+    from 0: `round(0.5)` = 1, `round(-0.5)` = −1, `round(2.5)` = 3, as `round` of C; not
+    the same as `floor(x + 0.5)`, which gives 1 for the largest number below 0.5). `floor`,
+    `ceil`, `trunc` and `round` keep the sign of zero, as IEEE 754 does (`ceil(-0.5)` and
+    `floor(-0)` are −0), and negating a false comparison gives −0. These four
+    functions are exact; `acos` and `asin`, like `sin`, can differ in the last bit between
+    systems and in the browser. A phase wraps into [0, 2π) with
+    `x - 2*pi*floor(x/(2*pi))` and into [−π, π] with `x - 2*pi*round(x/(2*pi))`.
   - *Evaluation:* stateless direct feedthrough (included in the E171 loop check); evaluated
     at every grid point and previewed at sub-step switching instants under
     `"switching": "interpolated"`. Non-finite outputs stop the run with E251.
+  - *Values that jump:* an expression whose value jumps (a comparison, `floor`, `round`)
+    acts as a `comparator` does. Where its output is the gate of a `controlled_switch` or a
+    `thyristor` and `"switching": "interpolated"`, the switch acts at the instant within the
+    step where the value jumps, found by bisection on the previewed signals (see
+    [numerical-method.md](numerical-method.md#switching-instants-within-a-step)); where it
+    goes elsewhere (an integrator, a delay, a controlled source), the value at a grid point
+    holds until the next one, so the jump is moved to a grid point (by up to one step). A
+    pulse that starts and ends within one step is not searched for beyond what the
+    switches already do. Near a bound, the last bit of an elementary function can turn a
+    comparison the other way on another system or in the browser
+    ([crates/openkeito-wasm/README.md](../crates/openkeito-wasm/README.md)): keep bounds
+    away from values that matter to the last bit.
 - **Rotating frame.** θ is the angle of the d axis ahead of the axis of phase a, the q axis
   is 90° ahead of the d axis, and amplitudes are kept:
 
@@ -818,7 +987,7 @@ errors, with W warnings.
 | E120–E125 | validation | names of components, nodes and buses |
 | E130–E138 | validation | values of components: not finite or out of range, orders of times and values, matrices that are not symmetric or positive definite, vector groups, phases of a fault |
 | E139 | validation | a coupled branch whose resistances and inductances differ by too many orders of magnitude between the sequences to be solved, checked for every stage coefficient that the run uses |
-| E140–E143, W142, W143 | validation | topology: no reference, nodes not connected to `gnd`, loops of ideal branches, nodes whose voltage nothing holds (now, or later in the run) |
+| E140–E145, W142–W144 | validation | topology: no reference, nodes not connected to `gnd`, loops of ideal branches, nodes whose voltage nothing holds (now, or later in the run); gains of dependent sources that make the equations singular (E144), equations with dependent sources that are singular for any gains (E145: a loop of a `vcvs` output and a sense port whose measured current does not change the voltage that the `vcvs` measures, a node that only current sources and control ports reach), a loop of outputs and sense ports whose current only the gains determine (W144: the transresistance of a `ccvs`, or a measured current that changes the voltage that the `vcvs` of the loop measures) |
 | E150–E155 | validation | outputs: nodes, components and buses that do not exist, quantities that are not defined, an output listed twice |
 | E160 | validation | a model without components |
 | E170–E173 | validation | controls: a signal that does not exist, a loop without a state, inputs and signs, a measurement that names no column |
@@ -828,7 +997,7 @@ errors, with W warnings.
 | E210 | run | writing the result failed |
 | W220, W221 | run | the waveforms left the steady state (W220); a switch still waits for a current zero at the end (W221) |
 | E230, E231, W230, W231 | validation | `bergeron_line`: travel time below the time step, resistance that couples the modes or exceeds the characteristic impedance |
-| E240–E244, W240 | validation | control blocks and controlled sources: names of signals, transfer functions, time series, lookup tables (`piecewise_linear`), `expression` blocks (E243: syntax errors, undefined variables or functions, wrong argument counts, variable conflicts), signals that a component offers (E244); a controlled source without `steady_state` (W240) |
+| E240–E244, W240 | validation | control blocks and controlled sources: names of signals, transfer functions, time series, lookup tables (`piecewise_linear`), `expression` blocks (E243: syntax errors, chained comparisons, undefined variables or functions, wrong argument counts, variable conflicts), signals that a component offers (E244); a controlled source without `steady_state` (W240) |
 | E250–E252 | run | a loop of control blocks did not settle; a control signal is not finite; a controller callback failed or returned a non-finite value |
 | E260–E264, W260, W261 | validation, run | nonlinear characteristics and saturation |
 | W270, W271 | run | more switching instants within a step than are placed; default resistances of diodes, controlled switches and thyristors that block more than one device does |

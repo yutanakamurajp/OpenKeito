@@ -372,7 +372,7 @@ pub(super) struct Expression {
 
 impl Expression {
     pub fn new(e: &model::Expression, b: &Build) -> Self {
-        let compiled = e.compile().expect("validated expression");
+        let compiled = e.compile_for(b.version).expect("validated expression");
         let inputs = compiled
             .resolved_signals()
             .iter()

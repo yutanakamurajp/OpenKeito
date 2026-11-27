@@ -4,8 +4,9 @@
 
 The circuit is described by modified nodal analysis: the unknowns are the node voltages
 (except `gnd`, including the inner nodes of three-phase components) and one branch current
-for each voltage source, each time-controlled switch, each ideal transformer and each
-faulted phase. Each node contributes Kirchhoff's current law, each voltage source
+for each voltage source, each time-controlled switch, each ideal transformer, each
+faulted phase and each output or sense port of a dependent source
+([Dependent sources](#dependent-sources)). Each node contributes Kirchhoff's current law, each voltage source
 `V(a) - V(b) = e(t)`, and each time-controlled switch `V(a) - V(b) = 0` (closed) or
 `i = 0` (open). Diodes and controlled switches are conductances (see
 [Switching elements](#switching-elements)); three-phase components are described in
@@ -34,7 +35,9 @@ switches and faults, at the grid points where they act and up to the last step, 
 warnings (W142, W143), because a contact that waits for a current zero opens later than
 it is told to. The phasor equations of the steady-state initialization are not checked
 this way (E203 reports them): there a converter is a current source and a lossless
-resonance can be singular, which no graph shows.
+resonance can be singular, which no graph shows. Dependent sources make the matrix
+[[G, C], [B, D]] with C ≠ Bᵀ; how the checks treat them, and the check of their gains
+(E144, E145), are in [Dependent sources](#dependent-sources).
 
 ## Integration as one stage formula
 
@@ -995,6 +998,64 @@ The stamps are those of the single-phase ideal transformer with the scalar ratio
 by N, the same in the time domain and with phasors (no state). With α = 0 it is an ideal
 YNyn0 bank.
 
+## Dependent sources
+
+`vcvs`, `vccs`, `cccs` and `ccvs` are the controlled sources of modified nodal analysis
+[Ho, Ruehli, Brennan 1975; Vlach and Singhal 1993]. With the output current from o+
+through the source to o−, the controlling voltage V(c+) − V(c−) and the current i_s of a
+sense port from s+ to s− (a branch of 0 V):
+
+| Source | Relation | Unknowns | Entries (rows: node equations and the equations of the unknowns) |
+|---|---|---|---|
+| `vccs` | i_out = g·V(c) | none | row o+: +g at c+, −g at c−; row o−: −g at c+, +g at c− |
+| `vcvs` | V(o) = k·V(c) | i_out | column i_out: +1 at o+, −1 at o−; row i_out: +1 at o+, −1 at o−, −k at c+, +k at c− |
+| `cccs` | i_out = β·i_s | i_s | column i_s: +1 at s+, −1 at s−, +β at o+, −β at o−; row i_s: +1 at s+, −1 at s− |
+| `ccvs` | V(o) = r·i_s | i_s, i_out | the sense port of `cccs` without β; column i_out: +1 at o+, −1 at o−; row i_out: +1 at o+, −1 at o−, −r at i_s |
+
+None has a state: the entries do not depend on the stage coefficient and the right-hand
+side is 0, so the same entries serve every stage, a split step, the phasor solution of the
+steady state and the frequency scan. The column of an output current lies in the node
+equations of the output and its row (or the entries of a `vccs`) at the controlling
+nodes, so the matrix is not symmetric; both LU factorizations are general ones with
+partial pivoting ([Linear solver](#linear-solver)).
+
+For the checks of validation ([Circuit equations](#circuit-equations)) the matrix is
+[[G, C], [B, D]]: an ideal branch has a column in C and a row in B. A voltage source or a
+closed switch has the incidence of its nodes as both. The output of a `vcvs` or a `ccvs`
+has it as its column only (its row has the gain too), a sense port as its row only (its
+column has the gain in the output). A loop of branches whose columns are all incidences
+makes the columns dependent, a loop of branches whose rows are all incidences makes the
+rows dependent: both are E142 whatever the gains, and validation looks for the two kinds of
+loop separately (an ideal transformer, with the same row and column, takes part in both).
+A loop that needs both an output and a sense port is solvable only through the gains
+(W144): through the transresistance of a `ccvs` in the loop (across its own sense port,
+r·I = 0 gives I = 0 for r ≠ 0), or through the output of the `cccs` or `ccvs` that
+measures the current, when that output changes the voltage that the `vcvs` of the loop
+measures. With the output of a `vcvs` across the sense port of a `cccs` whose output
+feeds the node c that the `vcvs` measures, the rows give V(s) = 0 and k·V(c) = 0, and the
+node equation of c, with β·I in it, gives I = −V(i)/(β·R1) for a source V(i) behind R1
+(`crates/openkeito-core/tests/dependent_sources.rs`). When the measured current does not
+change that voltage, nothing determines it, whatever the gains, even when it flows back
+into the circuit: with the `vcvs` measuring node i, which the source holds, the node
+equation of c gives V(c) from β·I, but no equation gives I (E145, found by the
+elimination below; a group too large for it stays W144 and stops the run with E200). For
+the nodes that nothing holds (E143) the outputs of `vccs` and `cccs` hold nothing, the
+row of a `vcvs` enters with the equations of the ideal transformers, and a `vccs` asks
+for V(c) = 0 (a restriction that can hide such nodes, never invent them). The row of a
+`vcvs` can thus seem to hold a node that only current sources and its control port reach;
+its voltage only sets the output, and the elimination finds it singular for any gains
+(E145). Gains that make the equations singular otherwise (E144) depend on values, which a
+graph cannot show: every connected group with dependent sources (at most 600 unknowns) is
+eliminated with its conductances drawn at random between 1 and 2, twice from a fixed seed,
+with the pivot threshold of the solver. A group that is singular is eliminated twice more
+with its gains drawn the same way: singular again, it is singular for any gains (E145,
+whose hint asks for a resistor in the loop or to gnd); solvable, its gains are the cause
+(E144, whose hint asks to change a gain).
+
+A dependent source joins the nodes of both its ports, so the two sides of a
+travelling-wave line that a dependent source connects are one part
+([Parts of a circuit that are solved on their own](#parts-of-a-circuit-that-are-solved-on-their-own)).
+
 ## Synchronous machines
 
 `synchronous_machine` is Park's model in the dq axes of the rotor [Park; Kundur, chapter 3;
@@ -1560,7 +1621,10 @@ Where the instants come from:
   limiter, dead band, selector, piecewise linear, expression, the transformations to and from
   the rotating frame) is evaluated at the previewed time, every other block (those with a
   state, the measurements) holds its output. The blocks of a loop are previewed once, in
-  their order.
+  their order. An `expression` with comparisons or logical operators (format 0.10) is
+  previewed like a `comparator`: a gate written as `(x > 0.3) && (x < 0.8)` switches at the
+  same instants as two comparators and a product (`examples/expression_logic.json`, where
+  the instants agree with asin(a)/ω to within 1e-12 s).
   The instant from which a `controlled_switch` would switch, or from which the gate of a
   `thyristor` (conducting or not) starts or stops firing it, is found by bisection on the
   previewed time, to 2⁻⁴⁰ of a step. With a constant reference the PWM edges are the
@@ -1924,6 +1988,19 @@ against U_d = (3√2/π)·V_LL·cos α − (3/π)·ωL_s·I_d and the overlap an
 cos α − cos(α + u) = 2ωL_s·I_d/(√2·V_LL) [Mohan, Undeland, Robbins, ch. 6] as a rectifier
 (α = 15°, 30°, 60°) and an inverter (α = 150°), the firing instants, the diode rectifier
 for a gate that always fires, and the first-order delay of the firing at grid points.
+`crates/openkeito-core/tests/dependent_sources.rs` checks the four dependent sources against
+closed forms in circuits of resistors (relative 1e-12; the errors found are near 1e-16),
+including a loop of the output of a `vcvs` and the sense port of a `cccs` that the output of
+the `cccs` closes (W144, 1.9e-16), an
+inverting amplifier with a `vcvs` of gain 1e5 and 1e6 at three time steps (3.3e-16), the
+same amplifier one step late (a growth of −A·R_in/(R_in + R_f) per step, to 1e-6), a `vcvs`
+charging an RC circuit (order 2.001 with the trapezoidal rule and 2.007 with 2S-DIRK, the
+same rows as a voltage source of the same value), a precision rectifier (switching within
+3.5e-13 s of the zeros of the input, the output within 8.9e-16 V of the piecewise-linear
+solution), the steady state and the frequency scan (1e-12), and the division into parts.
+`crates/openkeito-core/tests/ideal_transformer.rs` builds an ideal transformer from a `vcvs`
+and a `cccs` per phase and compares it with `three_phase_ideal_transformer` and with
+`transformer` (see [model.md](model.md#dependent-sources)).
 `crates/openkeito-core/tests/three_phase.rs` compares the fault currents of all fault types,
 bolted and through resistances, with symmetrical components; the voltage ratio and phase
 shift of every vector group, the short-circuit current from u_k and the magnetizing current
@@ -2066,6 +2143,8 @@ checked against the books and standards themselves.
 - C.-W. Ho, A. Ruehli, P. Brennan, "The modified nodal approach to network analysis,"
   IEEE Trans. Circuits and Systems, vol. CAS-22, no. 6, pp. 504–509, 1975,
   doi:10.1109/TCS.1975.1084079.
+- J. Vlach, K. Singhal, *Computer Methods for Circuit Analysis and Design*, 2nd ed., Van
+  Nostrand Reinhold, 1993 (modified nodal formulation with controlled sources).
 - K. G. Murty, "Note on a Bard-type scheme for solving the complementarity problem,"
   Opsearch, vol. 11, pp. 123–130, 1974.
 - K. J. Åström, T. Hägglund, *PID Controllers: Theory, Design, and Tuning*, 2nd ed.,

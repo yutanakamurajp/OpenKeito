@@ -12,8 +12,8 @@ use crate::components::Component;
 use crate::controls::Control;
 use crate::diagnostic::{self, unknown_name, Diagnostic, DocumentKind};
 use crate::model::{
-    FrequencyScan, Initialization, LinearSolver, Method, Model, Output, Partitioning, Simulation,
-    Switching,
+    version_at_least, FrequencyScan, Initialization, LinearSolver, Method, Model, Output,
+    Partitioning, Simulation, Switching, INTERPOLATED_BY_DEFAULT,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -768,12 +768,17 @@ pub(crate) fn read_model(text: &str) -> Result<Model, Vec<Diagnostic>> {
         return Err(errors);
     }
 
+    let version = version.expect("checked");
+    let mut simulation = simulation.expect("checked");
+    if simulation.switching.is_none() && version_at_least(&version, INTERPOLATED_BY_DEFAULT) {
+        simulation.switching = Some(Switching::Interpolated);
+    }
     Ok(Model {
         format: format.expect("checked"),
-        version: version.expect("checked"),
+        version,
         name: name.expect("checked"),
         description: description.expect("checked"),
-        simulation: simulation.expect("checked"),
+        simulation,
         components: components.expect("checked"),
         controls: controls.expect("checked"),
         outputs: outputs.expect("checked"),

@@ -8,12 +8,22 @@ pub use crate::controls::*;
 pub const FORMAT: &str = "openkeito-model";
 /// Current value of the `version` field. What a model of this version may
 /// use beyond the previous one is listed in `VERSION_ADDITIONS` (validation).
-pub const VERSION: &str = "0.9";
+pub const VERSION: &str = "0.10";
 /// Every `version` this crate reads. A model of an older version is also a
 /// valid model of every newer one.
-pub const SUPPORTED_VERSIONS: [&str; 9] = [
-    "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9",
+pub const SUPPORTED_VERSIONS: [&str; 10] = [
+    "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10",
 ];
+/// The first version whose models have "switching": "interpolated" when
+/// `simulation.switching` is not given.
+pub const INTERPOLATED_BY_DEFAULT: &str = "0.10";
+
+/// True when `version` is a supported version not older than `min`.
+pub fn version_at_least(version: &str, min: &str) -> bool {
+    let rank = |v: &str| SUPPORTED_VERSIONS.iter().position(|s| *s == v);
+    matches!((rank(version), rank(min)), (Some(v), Some(m)) if v >= m)
+}
+
 /// Name of the reference node (0 V).
 pub const GROUND: &str = "gnd";
 
@@ -23,8 +33,12 @@ pub const GROUND: &str = "gnd";
 pub struct Model {
     /// Must be "openkeito-model".
     pub format: String,
-    /// Format version: "0.9"; "0.8" for a model without the additions of
-    /// 0.9 (thyristor); "0.7" for a model without the additions of
+    /// Format version: "0.10"; "0.9" for a model without the additions of
+    /// 0.10 (vcvs, vccs, cccs, ccvs, the comparison and logical operators and
+    /// the functions acos, asin, floor, ceil, round and trunc of expression;
+    /// from 0.10 on, simulation.switching defaults to "interpolated"); "0.8"
+    /// for a model without the additions of 0.9 (thyristor); "0.7" for a
+    /// model without the additions of
     /// 0.8 (expression); "0.6" for a model without the additions of
     /// 0.7 (piecewise_linear, signal limits on lag, pi, integrator and
     /// limiter, pi.anti_windup, initialization on components);
@@ -86,9 +100,11 @@ pub struct Simulation {
     /// small circuits, sparse LU from AUTO_SPARSE_UNKNOWNS unknowns on.
     #[serde(default, skip_serializing_if = "LinearSolver::is_auto")]
     pub linear_solver: LinearSolver,
-    /// Where switching instants lie. "grid" (default): at grid points (an
-    /// instant moves to the next grid point). "interpolated": within the
-    /// time step, which is split there.
+    /// Where switching instants lie. "grid": at grid points (an instant
+    /// moves to the next grid point). "interpolated": within the time step,
+    /// which is split there. Default "interpolated" for a model of version
+    /// "0.10" or later, "grid" for an older one: reading a model of a later
+    /// version without the field sets it to "interpolated".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub switching: Option<Switching>,
     /// Whether the circuit is divided at its travelling-wave lines
@@ -333,7 +349,12 @@ impl Simulation {
         alphas
     }
 
-    /// Where the switching instants lie (the default when not given).
+    /// Where the switching instants lie: the field, and `Switching::Grid`
+    /// when it is `None`. This does not know the version of the model: the
+    /// default by version ("interpolated" from `INTERPOLATED_BY_DEFAULT` on)
+    /// is put into the field by `read_model` (behind `parse_str` and
+    /// `load_str`), so a `Simulation` made in code without the field gives
+    /// "grid" whatever the version of its model.
     pub fn switching(&self) -> Switching {
         self.switching.unwrap_or_default()
     }

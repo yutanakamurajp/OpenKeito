@@ -8,6 +8,7 @@
 //! Schema follow from that line.
 
 mod converters;
+mod dependent;
 mod lines;
 mod loads;
 mod machines;
@@ -22,6 +23,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub use converters::*;
+pub use dependent::*;
 pub use lines::*;
 pub use loads::*;
 pub use machines::*;
@@ -90,6 +92,17 @@ pub(crate) enum Branch {
     /// An ideal transformer: one equation, the sum of coefficient * V(node)
     /// = 0, with a current as unknown.
     Constraint(Vec<(String, f64)>),
+    /// A dependent source (`vcvs`, `vccs`, `cccs`, `ccvs`): its control or
+    /// sense port `input`, its output and its gain. The output of a source
+    /// of voltage and a sense port are ideal branches; the output of a
+    /// source of current holds no voltage, and a control port draws no
+    /// current.
+    Dependent {
+        kind: DependentKind,
+        input: [String; 2],
+        output: [String; 2],
+        gain: f64,
+    },
 }
 
 /// What validation and the catalog need to know about a component type.
@@ -329,6 +342,10 @@ component_types! {
     ThreePhaseControlledCurrentSource,
     SynchronousMachine,
     GridFollowingConverter,
+    Vcvs,
+    Vccs,
+    Cccs,
+    Ccvs,
 }
 
 impl Component {

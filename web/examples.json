@@ -24,6 +24,13 @@
       "columns": ["V(n1)", "V(n2)", "I(CB1)"]
     },
     {
+      "file": "dependent_sources.json",
+      "group": "basics",
+      "title": "Inverting amplifier with a dependent source",
+      "description": "An operational amplifier of gain 1e5 as a vcvs, with R_f / R_in = 10: the gain is -9.9989 at every instant, because the dependent source acts within the time step.",
+      "columns": ["V(in)", "V(out)"]
+    },
+    {
       "file": "three_phase_fault.json",
       "group": "network",
       "title": "Single line to ground fault behind a transformer",
@@ -123,6 +130,13 @@
       "columns": ["V(a)", "U(R1)", "I(D1)", "I(D2)"]
     },
     {
+      "file": "ideal_transformer_vcvs_cccs.json",
+      "group": "power-electronics",
+      "title": "Ideal transformer of a vcvs and a cccs",
+      "description": "A vcvs and a cccs make an ideal transformer of ratio 10, which feeds a diode bridge with a capacitor; the switching instants lie within the time steps.",
+      "columns": ["V(s)", "U(RDC)", "I(F1)"]
+    },
+    {
       "file": "thyristor_rectifier.json",
       "group": "power-electronics",
       "title": "Six-pulse thyristor rectifier",
@@ -177,6 +191,13 @@
       "title": "Expression control blocks",
       "description": "Single-input, multi-input, and variables-mapped mathematical expressions (model format 0.8) driving a controlled current source into an RC load.",
       "columns": ["V(n1)", "S(poly_trig)", "S(envelope)", "S(i_cmd)"]
+    },
+    {
+      "file": "expression_logic.json",
+      "group": "controls",
+      "title": "Gate from comparison and logical operators",
+      "description": "The gate (x > 0.3) && (x < 0.8) of an expression (model format 0.10) closes a 100 V chopper while a sine wave lies between 0.3 and 0.8. The switch acts where the sine wave crosses the band, between grid points (see the Events tab).",
+      "columns": ["S(x)", "S(gate)", "V(n2)", "I(R1)"]
     }
   ]
 }

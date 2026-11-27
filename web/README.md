@@ -161,7 +161,7 @@ Checked in Chromium 150 and Firefox 155 on Windows 11.
     drawn, with one line for all the components between two of them; the tab says so.
 - **Model.** Switch between `JSON` (a text area with line numbers) and `Form` mode (backed by
   the same JSON text as the single source of truth). `Form` mode builds structured parameter
-  forms from the 59-type catalog and JSON Schema (with units, descriptions, sign
+  forms from the 63-type catalog and JSON Schema (with units, descriptions, sign
   conventions, and `<datalist>` candidates for nodes, buses, and signals), lets you add or
   remove components, controls, and outputs, keeps Undo/Redo history, and shows `validate`
   diagnostics inline beside the matching field. 300 ms after the last edit the text goes to
@@ -246,6 +246,7 @@ database line by line.
 | `controlled_voltage_source`, `controlled_current_source`, `three_phase_controlled_source`, `three_phase_controlled_current_source` | the source with a dashed link to an operating device | composed |
 | `synchronous_machine` | circle with `GS` and `3~` | IEC (machine) |
 | `grid_following_converter` | rectangle with a diagonal, `~` towards the bus and `=` behind | IEC (converter) |
+| `vcvs`, `vccs`, `cccs`, `ccvs` | on two tracks: the control port (two open ends, `+` above) or the sense port (a bar joining its ends with the arrow of its current) on the left, a diamond on the right with `+` and `−` (a voltage) or the arrow of the output current, and a dashed link from the port to the diamond | textbook (the diamond of circuit textbooks; no IEC 60617 entry was found in public descriptions) |
 | `coupled_rl` | rectangle with `Z` | IEC (impedance) |
 | `pi_line` | rectangle with a capacitor to earth at each end | composed |
 | `bergeron_line` | rectangle with a bar at each end and `τ` | composed |
@@ -256,7 +257,7 @@ database line by line.
 | control blocks (32) | rectangle with a mark: `Σ`, `∫`, `K`, `PI`, `1/(1+sT)`, `G(s)`, `×`, `÷`, `f(u)`, `PLL`, `abc/dq0`, a small curve for a limiter, a dead band, a step, a ramp, a sine, a triangle wave, a time series, a piecewise linear curve | |
 
 Every type of `openkeito components` has an entry in `CIRCUIT` or `CONTROL` of
-`src/symbols.js` (27 and 32). A type without one is drawn as a dashed box with its name;
+`src/symbols.js` (31 and 32). A type without one is drawn as a dashed box with its name;
 the tests and `build.mjs` fail while there is one, so a new component gets its symbol with
 it.
 
@@ -389,6 +390,9 @@ browser has a resolution of 0.1 ms, so the small numbers are rough.
 `transition_three_times` (145 000 steps, 7 251 rows) was added after this measurement; it is
 the longest example and takes 0.5 s when `build.mjs` runs it in Node on the same machine.
 `thyristor_rectifier` (5 000 steps, 5 001 rows) was added after it too.
+`dependent_sources` (2 000 steps, 2 001 rows) and `ideal_transformer_vcvs_cccs` (5 000 steps,
+5 001 rows) too.
+`expression_logic` (2 000 steps, 2 001 rows) too.
 
 The clock: a run reads it twice per output row. Where a model has cheap steps and writes
 every one of them, that is a visible part of a run (`rectifier`: 125 ms with the clock, 85 ms
@@ -402,7 +406,7 @@ configuration, build image, headers, serving, limits; Wrangler: `pages`; compres
 of this has been run: deploying is done by the maintainer.
 
 What the page needs from a host is little: static files, `text/javascript` for `.js`, ideally
-`application/wasm` for `.wasm`. `web/dist` is 51 files and 4.44 MB (24 examples; limits of
+`application/wasm` for `.wasm`. `web/dist` is 54 files and 4.64 MB (27 examples; limits of
 Pages: 20 000 files, 25 MiB per file).
 
 ### Direct upload (recommended)

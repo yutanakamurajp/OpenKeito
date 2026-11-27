@@ -378,3 +378,26 @@ test("itemOwners returns member components for a reduced item", () => {
   assert.deepEqual(itemOwners(placed, reduced), ["component:L0", "component:P0"]);
   assert.deepEqual(itemOwners(placed, { id: "component:R1", category: "circuit", ports: [] }), ["component:R1"]);
 });
+
+test("a dependent source shows its sense current at the port and its output current at the output", async () => {
+  // The ideal transformer of a vcvs and a cccs records I(F1) and, with every
+  // current, I(F1.sense): the sense current goes left (I0), the output right
+  // (I1), each to the frame of its row.
+  const file = "ideal_transformer_vcvs_cccs.json";
+  const model = JSON.parse(textOf(file));
+  model.outputs.push({ type: "branch_current", component: "F1" }, { type: "branch_current", component: "E1" });
+  model.outputs = model.outputs.filter((o, k, all) => all.findIndex((p) => JSON.stringify(p) === JSON.stringify(o)) === k);
+  const run = await ran("dependent-columns", JSON.stringify(model));
+  const slotOf = (name) => run.binding.entries.find((e) => e.name === name)?.slot;
+  assert.equal(slotOf("I(F1)"), "I1");
+  assert.equal(slotOf("I(F1.sense)"), "I0");
+  assert.equal(slotOf("I(E1)"), "I");
+  assert.deepEqual([...run.slots.get("component:F1")].sort(), ["I0", "I1"]);
+  const row = 3000;
+  const frame = frameOf(run, row);
+  const value = (name) => run.table.columns[run.table.header.indexOf(name)][row];
+  assert.equal(frame.texts.get("component:F1|I1"), formatQuantity(value("I(F1)"), "A"));
+  assert.equal(frame.texts.get("component:F1|I0"), formatQuantity(value("I(F1.sense)"), "A"));
+  // The ratio of the two is the gain.
+  assert.ok(Math.abs(value("I(F1)") - 10 * value("I(F1.sense)")) <= 1e-12 * Math.abs(value("I(F1)")));
+});

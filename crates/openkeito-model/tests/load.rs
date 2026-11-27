@@ -216,7 +216,7 @@ fn version_0_1_does_not_have_the_additions_of_0_2() {
         assert!(e[0].message.contains(what), "{}", e[0].message);
     }
     assert!(e[0].hint.contains("\"version\": \"0.2\""));
-    let e = errors(&BUCK.replace("\"0.2\"", "\"0.10\""));
+    let e = errors(&BUCK.replace("\"0.2\"", "\"0.11\""));
     assert_eq!(e[0].code, "E101");
     assert!(e[0].hint.contains("0.4"));
 }
@@ -2163,10 +2163,10 @@ fn expression_block_reports_e243_with_paths_and_hints() {
 #[test]
 fn catalog_and_schema_include_version_0_8_additions() {
     let catalog = openkeito_model::component_catalog();
-    assert_eq!(catalog.len(), 59);
+    assert_eq!(catalog.len(), 63);
     let circuit_count = catalog.iter().filter(|c| c.category == "circuit").count();
     let control_count = catalog.iter().filter(|c| c.category == "control").count();
-    assert_eq!(circuit_count, 27);
+    assert_eq!(circuit_count, 31);
     assert_eq!(control_count, 32);
 
     let fn_pos = catalog

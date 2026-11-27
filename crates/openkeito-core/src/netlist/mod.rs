@@ -11,6 +11,7 @@
 //! list of `build`.
 
 mod converters;
+mod dependent;
 mod lines;
 mod loads;
 mod machines;
@@ -656,6 +657,10 @@ fn build_parts(m: &model::Model, partitioning: model::Partitioning, record: bool
             }
             Component::SynchronousMachine(c) => machines::synchronous_machine(&mut b, c),
             Component::GridFollowingConverter(c) => converters::grid_following_converter(&mut b, c),
+            Component::Vcvs(c) => dependent::vcvs(&mut b, c),
+            Component::Vccs(c) => dependent::vccs(&mut b, c),
+            Component::Cccs(c) => dependent::cccs(&mut b, c),
+            Component::Ccvs(c) => dependent::ccvs(&mut b, c),
         };
         let name = c.name().to_string();
         if let Some(a) = &b.asked {

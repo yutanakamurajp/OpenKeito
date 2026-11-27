@@ -1,0 +1,23 @@
+{
+  "format": "openkeito-model",
+  "version": "0.10",
+  "name": "inverting amplifier with a vcvs",
+  "description": "An operational amplifier of gain A = 1e5 as a vcvs from the non-inverting input (gnd) and the inverting input m to the output, with R_in = 1 kohm and R_f = 10 kohm. The gain v_out / v_in is -(R_f / R_in) / (1 + (1 + R_f / R_in) / A) = -9.998900 at every instant: the vcvs acts within the time step, so the feedback through R_f is not one step late.",
+  "simulation": {
+    "time_step_s": 1e-6,
+    "end_time_s": 2e-3
+  },
+  "components": [
+    {"type": "voltage_source", "name": "VIN", "nodes": ["in", "gnd"], "waveform": {"type": "sine", "amplitude": 0.1, "frequency_hz": 1000.0, "phase_deg": 0.0}},
+    {"type": "resistor", "name": "RIN", "nodes": ["in", "m"], "resistance_ohm": 1000.0},
+    {"type": "resistor", "name": "RF", "nodes": ["m", "out"], "resistance_ohm": 10000.0},
+    {"type": "vcvs", "name": "A1", "control": ["gnd", "m"], "output": ["out", "gnd"], "gain_v_per_v": 1e5},
+    {"type": "resistor", "name": "RL", "nodes": ["out", "gnd"], "resistance_ohm": 2000.0}
+  ],
+  "outputs": [
+    {"type": "node_voltage", "node": "in"},
+    {"type": "node_voltage", "node": "m"},
+    {"type": "node_voltage", "node": "out"},
+    {"type": "branch_current", "component": "A1"}
+  ]
+}

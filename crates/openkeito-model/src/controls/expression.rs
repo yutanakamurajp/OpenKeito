@@ -14,10 +14,20 @@ use crate::diagnostic::Diagnostic;
 
 const MAX_PARSE_DEPTH: usize = 256;
 
-const BUILTIN_FUNCTIONS: &[&str] = &[
+/// The format version that added the comparison operators (`<`, `<=`, `>`,
+/// `>=`, `==`, `!=`), the logical operators (`!`, `&&`, `||`) and the
+/// functions of [`FUNCTIONS_ADDED_IN_0_10`] to `expression`.
+pub const EXPRESSION_LOGIC_SINCE: &str = "0.10";
+
+/// The functions of `expression` since format 0.8.
+const FUNCTIONS_SINCE_0_8: &[&str] = &[
     "sin", "cos", "tan", "atan", "atan2", "abs", "sqrt", "exp", "ln", "sign", "min", "max",
     "hypot", "pow",
 ];
+
+/// The functions that format 0.10 adds. A model of an older version may use
+/// these names for signals and variables.
+const FUNCTIONS_ADDED_IN_0_10: &[&str] = &["acos", "asin", "floor", "ceil", "round", "trunc"];
 
 /// Scalar mathematical expression of the input signals.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -26,14 +36,20 @@ pub struct Expression {
     pub name: String,
     /// Input signal names. Signals that are valid identifiers `[A-Za-z_][A-Za-z0-9_]*`
     /// and not built-in function names can be referenced directly; any input can
-    /// also be referenced positionally as `u0`, `u1`, ...
+    /// also be referenced positionally as `u0`, `u1`, ... From format "0.10" on,
+    /// acos, asin, floor, ceil, round and trunc are function names too (reserved
+    /// only in models of "0.10" and later).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inputs: Vec<String>,
     /// Mapping from expression variable names (`[A-Za-z_][A-Za-z0-9_]*`) to
     /// signal names, for signals containing `.` (such as `v.d`) or aliases.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub variables: BTreeMap<String, String>,
-    /// Mathematical expression string.
+    /// Mathematical expression string: numbers, variables, `pi`, `e`, the
+    /// arithmetic operators `+ - * / ^`, from "0.10" on the comparison and
+    /// logical operators `< <= > >= == != ! && ||` (1 for true, 0 for false),
+    /// and function calls. Operators, precedence and functions: docs/model.md,
+    /// "Controls", "Expression".
     pub expression: String,
 }
 
@@ -61,6 +77,35 @@ pub enum ExprOp {
     Hypot,
     Min(usize),
     Max(usize),
+    Acos,
+    Asin,
+    Floor,
+    Ceil,
+    Round,
+    Trunc,
+    /// Logical not: 1 for 0 (or -0), 0 for any other number, NaN for NaN.
+    Not,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Eq,
+    Ne,
+    And,
+    Or,
+}
+
+/// Syntax of `expression` that a format version after 0.8 added, as used in
+/// one expression: what (an operator such as `'>='` or a function name) and
+/// the 1-based character column where it is used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExprAddition {
+    /// The format version that added it.
+    pub version: &'static str,
+    /// The operator in quotes (`'&&'`) or the function name (`floor`).
+    pub what: String,
+    /// 1-based character column in `expression`.
+    pub column: usize,
 }
 
 /// Compiled bytecode representation of an [`Expression`].
@@ -69,9 +114,50 @@ pub struct CompiledExpression {
     ops: Vec<ExprOp>,
     resolved_signals: Vec<String>,
     max_depth: usize,
+    additions: Vec<ExprAddition>,
+}
+
+/// 1 for true and +0 for false: the value of a comparison or a logical
+/// operator.
+#[inline]
+fn truth(b: bool) -> f64 {
+    if b {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+/// A comparison of two numbers; NaN when either is NaN.
+#[inline]
+fn compare(a: f64, b: f64, f: impl Fn(f64, f64) -> bool) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else {
+        truth(f(a, b))
+    }
+}
+
+/// A logical operator on two numbers, each true unless 0 or -0; NaN when
+/// either is NaN. Both are always evaluated (no short circuit).
+#[inline]
+fn logic(a: f64, b: f64, f: impl Fn(bool, bool) -> bool) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else {
+        truth(f(a != 0.0, b != 0.0))
+    }
 }
 
 impl CompiledExpression {
+    /// Uses of syntax added by a format version after 0.8, in the order the
+    /// parser meets them: [`Expression::compile_for`] accepts them for any
+    /// version, and validation reports E102 when the model declares an older
+    /// one.
+    pub fn additions(&self) -> &[ExprAddition] {
+        &self.additions
+    }
+
     /// Signal names required at evaluation time, indexed to match `args` in
     /// [`CompiledExpression::eval`].
     pub fn resolved_signals(&self) -> &[String] {
@@ -184,6 +270,39 @@ impl CompiledExpression {
                     sp = start + 1;
                     stack[start] = acc;
                 }
+                ExprOp::Acos => stack[sp - 1] = stack[sp - 1].acos(),
+                ExprOp::Asin => stack[sp - 1] = stack[sp - 1].asin(),
+                ExprOp::Floor => stack[sp - 1] = stack[sp - 1].floor(),
+                ExprOp::Ceil => stack[sp - 1] = stack[sp - 1].ceil(),
+                // Halves away from 0, like C's round.
+                ExprOp::Round => stack[sp - 1] = stack[sp - 1].round(),
+                ExprOp::Trunc => stack[sp - 1] = stack[sp - 1].trunc(),
+                ExprOp::Not => {
+                    let x = stack[sp - 1];
+                    stack[sp - 1] = if x.is_nan() { x } else { truth(x == 0.0) };
+                }
+                ExprOp::Lt
+                | ExprOp::Le
+                | ExprOp::Gt
+                | ExprOp::Ge
+                | ExprOp::Eq
+                | ExprOp::Ne
+                | ExprOp::And
+                | ExprOp::Or => {
+                    let b = stack[sp - 1];
+                    sp -= 1;
+                    let a = stack[sp - 1];
+                    stack[sp - 1] = match op {
+                        ExprOp::Lt => compare(a, b, |a, b| a < b),
+                        ExprOp::Le => compare(a, b, |a, b| a <= b),
+                        ExprOp::Gt => compare(a, b, |a, b| a > b),
+                        ExprOp::Ge => compare(a, b, |a, b| a >= b),
+                        ExprOp::Eq => compare(a, b, |a, b| a == b),
+                        ExprOp::Ne => compare(a, b, |a, b| a != b),
+                        ExprOp::And => logic(a, b, |a, b| a && b),
+                        _ => logic(a, b, |a, b| a || b),
+                    };
+                }
             }
         }
         debug_assert_eq!(sp, 1);
@@ -238,8 +357,24 @@ impl std::error::Error for ExprError {}
 
 impl Expression {
     /// Validates bindings and parses `self.expression` into a
-    /// [`CompiledExpression`].
+    /// [`CompiledExpression`], for a model of the current format version.
     pub fn compile(&self) -> Result<CompiledExpression, ExprError> {
+        self.compile_for(crate::VERSION)
+    }
+
+    /// Like [`Expression::compile`], for a model that declares the format
+    /// version `version`.
+    ///
+    /// The names of the functions that a version adds are reserved only from
+    /// that version on: in an older model they stay free for signals and
+    /// variables. Operators and functions of a newer version are compiled
+    /// all the same and listed in [`CompiledExpression::additions`] (for
+    /// E102), unless the name of such a function is a signal or variable of
+    /// the block (then the call is an unknown function, as before).
+    pub fn compile_for(&self, version: &str) -> Result<CompiledExpression, ExprError> {
+        let names = Names {
+            logic: crate::version_at_least(version, EXPRESSION_LOGIC_SINCE),
+        };
         let mut seen_inputs: HashSet<&str> = HashSet::with_capacity(self.inputs.len());
         let mut input_idents: HashMap<&str, usize> = HashMap::with_capacity(self.inputs.len());
         for (i, sig) in self.inputs.iter().enumerate() {
@@ -250,7 +385,7 @@ impl Expression {
                     hint: "List each input signal only once in \"inputs\".".to_string(),
                 });
             }
-            if is_valid_ident(sig) && !is_builtin_fn(sig) {
+            if is_valid_ident(sig) && !names.is_builtin_fn(sig) {
                 input_idents.insert(sig.as_str(), i);
             }
         }
@@ -265,7 +400,7 @@ impl Expression {
                         .to_string(),
                 });
             }
-            if is_builtin_fn(var_name) {
+            if names.is_builtin_fn(var_name) {
                 return Err(ExprError {
                     location: ExprErrorLocation::Variable(var_name.clone()),
                     message: format!(
@@ -295,10 +430,12 @@ impl Expression {
             tokens: &tokens,
             pos: 0,
             expr: self,
+            names,
             input_idents: &input_idents,
             signal_slots: HashMap::new(),
             resolved_signals: Vec::new(),
             ops: Vec::new(),
+            additions: Vec::new(),
         };
 
         if parser.peek().kind == TokenKind::Eof {
@@ -322,6 +459,7 @@ impl Expression {
             ops: parser.ops,
             resolved_signals: parser.resolved_signals,
             max_depth,
+            additions: parser.additions,
         })
     }
 }
@@ -351,8 +489,8 @@ impl ControlSpec for Expression {
         true
     }
 
-    fn check(&self, p: &str, _scope: &Scope, d: &mut Vec<Diagnostic>) {
-        if let Err(err) = self.compile() {
+    fn check(&self, p: &str, scope: &Scope, d: &mut Vec<Diagnostic>) {
+        if let Err(err) = self.compile_for(scope.version) {
             d.push(Diagnostic::error(
                 "E243",
                 format!("{p}.{}", err.field_path()),
@@ -369,8 +507,12 @@ impl ControlSpec for Expression {
             summary: "Scalar mathematical expression of the input signals. Supports +, -, *, /, ^ \
                       (right-associative, higher precedence than unary +/-), parentheses, \
                       constants pi and e, and functions sin, cos, tan, atan, atan2, abs, sqrt, \
-                      exp, ln, sign, min, max, hypot, pow. Angles are in radians. A non-finite \
-                      result stops the run (E251).",
+                      exp, ln, sign, min, max, hypot, pow; from version 0.10 also the \
+                      comparisons <, <=, >, >=, ==, != and the logical operators !, &&, || \
+                      (precedence as in C; true is 1 and false 0; a NaN operand gives NaN; \
+                      both sides of && and || are evaluated; a < b < c is rejected) and the \
+                      functions acos, asin, floor, ceil, round (halves away from 0) and trunc. \
+                      Angles are in radians. A non-finite result stops the run (E251).",
             sign_convention: SIGNAL,
             parameters: control(vec![
                 p(
@@ -404,8 +546,26 @@ fn is_valid_ident(s: &str) -> bool {
         && bytes.all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
-fn is_builtin_fn(s: &str) -> bool {
-    BUILTIN_FUNCTIONS.contains(&s)
+/// The built-in function names of a format version.
+#[derive(Debug, Clone, Copy)]
+struct Names {
+    /// The version has the comparison and logical operators and the
+    /// functions of [`FUNCTIONS_ADDED_IN_0_10`].
+    logic: bool,
+}
+
+impl Names {
+    fn is_builtin_fn(self, s: &str) -> bool {
+        FUNCTIONS_SINCE_0_8.contains(&s) || (self.logic && FUNCTIONS_ADDED_IN_0_10.contains(&s))
+    }
+
+    fn list(self) -> String {
+        let mut v = FUNCTIONS_SINCE_0_8.to_vec();
+        if self.logic {
+            v.extend_from_slice(FUNCTIONS_ADDED_IN_0_10);
+        }
+        v.join(", ")
+    }
 }
 
 fn parse_positional_input(ident: &str) -> Option<usize> {
@@ -435,6 +595,15 @@ enum TokenKind<'a> {
     LParen,
     RParen,
     Comma,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    EqEq,
+    Ne,
+    AndAnd,
+    OrOr,
+    Bang,
     Eof,
 }
 
@@ -503,6 +672,33 @@ fn tokenize(src: &str) -> Result<Vec<Token<'_>>, ExprError> {
                 i += 1;
                 TokenKind::Comma
             }
+            b'<' | b'>' | b'=' | b'!' | b'&' | b'|' => {
+                let next = bytes.get(i + 1).copied();
+                let (kind, len) = match (b, next) {
+                    (b'<', Some(b'=')) => (TokenKind::Le, 2),
+                    (b'<', _) => (TokenKind::Lt, 1),
+                    (b'>', Some(b'=')) => (TokenKind::Ge, 2),
+                    (b'>', _) => (TokenKind::Gt, 1),
+                    (b'=', Some(b'=')) => (TokenKind::EqEq, 2),
+                    (b'!', Some(b'=')) => (TokenKind::Ne, 2),
+                    (b'!', _) => (TokenKind::Bang, 1),
+                    (b'&', Some(b'&')) => (TokenKind::AndAnd, 2),
+                    (b'|', Some(b'|')) => (TokenKind::OrOr, 2),
+                    _ => {
+                        let ch = b as char;
+                        return Err(ExprError {
+                            location: ExprErrorLocation::Expression { column },
+                            message: format!("unexpected character '{ch}' at character {column}"),
+                            hint: "Write '==' to compare for equality, '&&' for logical and \
+                                   and '||' for logical or: a single '=', '&' or '|' is not an \
+                                   operator."
+                                .to_string(),
+                        });
+                    }
+                };
+                i += len;
+                kind
+            }
             b'.' => {
                 if bytes.get(i + 1).is_some_and(u8::is_ascii_digit) {
                     let (val, next_i) = lex_number(src, start)?;
@@ -533,8 +729,9 @@ fn tokenize(src: &str) -> Result<Vec<Token<'_>>, ExprError> {
                 return Err(ExprError {
                     location: ExprErrorLocation::Expression { column },
                     message: format!("unexpected character '{ch}' at character {column}"),
-                    hint: "Expressions allow numbers, identifiers, parentheses, commas, and \
-                           operators +, -, *, /, ^."
+                    hint: "Expressions allow numbers, identifiers, parentheses, commas, the \
+                           operators +, -, *, /, ^, the comparisons <, <=, >, >=, ==, != and the \
+                           logical operators !, &&, ||."
                         .to_string(),
                 });
             }
@@ -613,10 +810,52 @@ struct Parser<'a> {
     tokens: &'a [Token<'a>],
     pos: usize,
     expr: &'a Expression,
+    names: Names,
     input_idents: &'a HashMap<&'a str, usize>,
     signal_slots: HashMap<String, usize>,
     resolved_signals: Vec<String>,
     ops: Vec<ExprOp>,
+    additions: Vec<ExprAddition>,
+}
+
+/// The relational operator (`<`, `<=`, `>`, `>=`) of a token.
+fn relational_op(kind: TokenKind<'_>) -> Option<ExprOp> {
+    match kind {
+        TokenKind::Lt => Some(ExprOp::Lt),
+        TokenKind::Le => Some(ExprOp::Le),
+        TokenKind::Gt => Some(ExprOp::Gt),
+        TokenKind::Ge => Some(ExprOp::Ge),
+        _ => None,
+    }
+}
+
+/// The equality operator (`==`, `!=`) of a token.
+fn equality_op(kind: TokenKind<'_>) -> Option<ExprOp> {
+    match kind {
+        TokenKind::EqEq => Some(ExprOp::Eq),
+        TokenKind::Ne => Some(ExprOp::Ne),
+        _ => None,
+    }
+}
+
+/// E243 for a comparison whose operand is another comparison without
+/// parentheses: `second` is the later of the two operators.
+fn chained_comparison(first: Token<'_>, second: Token<'_>) -> ExprError {
+    ExprError {
+        location: ExprErrorLocation::Expression {
+            column: second.column,
+        },
+        message: format!(
+            "comparison {} at character {} is chained with the comparison {} at character {}",
+            describe_token(second.kind),
+            second.column,
+            describe_token(first.kind),
+            first.column
+        ),
+        hint: "Comparisons cannot be chained: write (a < b) && (b < c) to test both, and put a \
+               comparison in parentheses to compare its result, for example (a < b) == c."
+            .to_string(),
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -656,8 +895,76 @@ impl<'a> Parser<'a> {
         idx
     }
 
+    /// Notes the use of an operator or function that format 0.10 added.
+    fn added(&mut self, what: String, column: usize) {
+        self.additions.push(ExprAddition {
+            version: EXPRESSION_LOGIC_SINCE,
+            what,
+            column,
+        });
+    }
+
     fn parse_expr(&mut self, depth: usize) -> Result<(), ExprError> {
-        self.parse_add_sub(depth)
+        self.parse_or(depth)
+    }
+
+    fn parse_or(&mut self, depth: usize) -> Result<(), ExprError> {
+        self.parse_and(depth)?;
+        while self.peek().kind == TokenKind::OrOr {
+            let tok = self.advance();
+            self.added(describe_token(tok.kind), tok.column);
+            self.parse_and(depth)?;
+            self.ops.push(ExprOp::Or);
+        }
+        Ok(())
+    }
+
+    fn parse_and(&mut self, depth: usize) -> Result<(), ExprError> {
+        self.parse_equality(depth)?;
+        while self.peek().kind == TokenKind::AndAnd {
+            let tok = self.advance();
+            self.added(describe_token(tok.kind), tok.column);
+            self.parse_equality(depth)?;
+            self.ops.push(ExprOp::And);
+        }
+        Ok(())
+    }
+
+    /// `==` and `!=`. An operand that is itself a comparison without
+    /// parentheses is E243.
+    fn parse_equality(&mut self, depth: usize) -> Result<(), ExprError> {
+        let mut last = self.parse_relational(depth)?;
+        while let Some(op) = equality_op(self.peek().kind) {
+            let tok = self.advance();
+            if let Some(first) = last {
+                return Err(chained_comparison(first, tok));
+            }
+            self.added(describe_token(tok.kind), tok.column);
+            if let Some(inner) = self.parse_relational(depth)? {
+                return Err(chained_comparison(tok, inner));
+            }
+            self.ops.push(op);
+            last = Some(tok);
+        }
+        Ok(())
+    }
+
+    /// `<`, `<=`, `>` and `>=`: the operator token when there is one. A
+    /// second relational operator right after the operand is E243.
+    fn parse_relational(&mut self, depth: usize) -> Result<Option<Token<'a>>, ExprError> {
+        self.parse_add_sub(depth)?;
+        let Some(op) = relational_op(self.peek().kind) else {
+            return Ok(None);
+        };
+        let tok = self.advance();
+        self.added(describe_token(tok.kind), tok.column);
+        self.parse_add_sub(depth)?;
+        self.ops.push(op);
+        let next = self.peek();
+        if relational_op(next.kind).is_some() {
+            return Err(chained_comparison(tok, next));
+        }
+        Ok(Some(tok))
     }
 
     fn parse_add_sub(&mut self, depth: usize) -> Result<(), ExprError> {
@@ -712,6 +1019,14 @@ impl<'a> Parser<'a> {
                 self.check_depth(depth + 1, tok.column)?;
                 self.parse_unary(depth + 1)?;
                 self.ops.push(ExprOp::Neg);
+                Ok(())
+            }
+            TokenKind::Bang => {
+                let tok = self.advance();
+                self.check_depth(depth + 1, tok.column)?;
+                self.added(describe_token(tok.kind), tok.column);
+                self.parse_unary(depth + 1)?;
+                self.ops.push(ExprOp::Not);
                 Ok(())
             }
             _ => self.parse_power(depth),
@@ -801,7 +1116,7 @@ impl<'a> Parser<'a> {
                     describe_token(tok.kind),
                     tok.column
                 ),
-                hint: "Expected a number, variable, function call, unary +/-, or '('."
+                hint: "Expected a number, variable, function call, unary +, - or !, or '('."
                     .to_string(),
             }),
         }
@@ -868,6 +1183,25 @@ impl<'a> Parser<'a> {
             "pow" => expect_arity(name, name_col, argc, 2, 2, ExprOp::Pow)?,
             "min" => expect_arity(name, name_col, argc, 1, usize::MAX, ExprOp::Min(argc))?,
             "max" => expect_arity(name, name_col, argc, 1, usize::MAX, ExprOp::Max(argc))?,
+            // In an older model, a function of 0.10 whose name is a signal
+            // or variable of the block is an unknown function, as before.
+            "acos" | "asin" | "floor" | "ceil" | "round" | "trunc"
+                if self.names.logic
+                    || !(self.input_idents.contains_key(name)
+                        || self.expr.variables.contains_key(name)) =>
+            {
+                let op = match name {
+                    "acos" => ExprOp::Acos,
+                    "asin" => ExprOp::Asin,
+                    "floor" => ExprOp::Floor,
+                    "ceil" => ExprOp::Ceil,
+                    "round" => ExprOp::Round,
+                    _ => ExprOp::Trunc,
+                };
+                let op = expect_arity(name, name_col, argc, 1, 1, op)?;
+                self.added(name.to_string(), name_col);
+                op
+            }
             _ => {
                 return Err(ExprError {
                     location: ExprErrorLocation::Expression { column: name_col },
@@ -875,7 +1209,7 @@ impl<'a> Parser<'a> {
                     hint: format!(
                         "Supported functions: {}. If \"{name}\" is a variable, put an operator \
                          like '*' before '('.",
-                        BUILTIN_FUNCTIONS.join(", ")
+                        self.names.list()
                     ),
                 });
             }
@@ -885,7 +1219,7 @@ impl<'a> Parser<'a> {
     }
 
     fn resolve_ident(&mut self, name: &str, column: usize) -> Result<(), ExprError> {
-        if is_builtin_fn(name) {
+        if self.names.is_builtin_fn(name) {
             return Err(ExprError {
                 location: ExprErrorLocation::Expression { column },
                 message: format!(
@@ -953,7 +1287,7 @@ impl<'a> Parser<'a> {
     fn unknown_variable_hint(&self, name: &str) -> String {
         let mut available: Vec<String> = Vec::new();
         for (i, sig) in self.expr.inputs.iter().enumerate() {
-            if is_valid_ident(sig) && !is_builtin_fn(sig) {
+            if is_valid_ident(sig) && !self.names.is_builtin_fn(sig) {
                 available.push(sig.clone());
             } else {
                 available.push(format!("u{i} ({sig})"));
@@ -1047,6 +1381,15 @@ fn describe_token(kind: TokenKind<'_>) -> String {
         TokenKind::LParen => "'('".to_string(),
         TokenKind::RParen => "')'".to_string(),
         TokenKind::Comma => "','".to_string(),
+        TokenKind::Lt => "'<'".to_string(),
+        TokenKind::Le => "'<='".to_string(),
+        TokenKind::Gt => "'>'".to_string(),
+        TokenKind::Ge => "'>='".to_string(),
+        TokenKind::EqEq => "'=='".to_string(),
+        TokenKind::Ne => "'!='".to_string(),
+        TokenKind::AndAnd => "'&&'".to_string(),
+        TokenKind::OrOr => "'||'".to_string(),
+        TokenKind::Bang => "'!'".to_string(),
         TokenKind::Eof => "end of expression".to_string(),
     }
 }
@@ -1069,14 +1412,29 @@ fn compute_max_depth(ops: &[ExprOp]) -> usize {
             | ExprOp::Sqrt
             | ExprOp::Exp
             | ExprOp::Ln
-            | ExprOp::Sign => {}
+            | ExprOp::Sign
+            | ExprOp::Acos
+            | ExprOp::Asin
+            | ExprOp::Floor
+            | ExprOp::Ceil
+            | ExprOp::Round
+            | ExprOp::Trunc
+            | ExprOp::Not => {}
             ExprOp::Add
             | ExprOp::Sub
             | ExprOp::Mul
             | ExprOp::Div
             | ExprOp::Pow
             | ExprOp::Atan2
-            | ExprOp::Hypot => {
+            | ExprOp::Hypot
+            | ExprOp::Lt
+            | ExprOp::Le
+            | ExprOp::Gt
+            | ExprOp::Ge
+            | ExprOp::Eq
+            | ExprOp::Ne
+            | ExprOp::And
+            | ExprOp::Or => {
                 depth -= 1;
             }
             ExprOp::Min(n) | ExprOp::Max(n) => {
@@ -1334,5 +1692,390 @@ mod tests {
 
         let err = expr(&["x", "x"], &[], "x").compile().unwrap_err();
         assert_eq!(err.field_path(), "inputs[1]");
+    }
+
+    // Comparison and logical operators, and the functions of 0.10.
+
+    const VARS: &[&str] = &["a", "b", "c", "d", "x"];
+
+    fn ops_of(text: &str) -> Vec<ExprOp> {
+        expr(VARS, &[], text)
+            .compile()
+            .unwrap_or_else(|e| panic!("{text}: {}", e.message))
+            .ops()
+            .to_vec()
+    }
+
+    #[test]
+    fn precedence_of_the_comparison_and_logical_operators_is_that_of_c() {
+        // Each pair: the text without parentheses, and the same with the
+        // parentheses that the rules of C put in (with ^ above the unary
+        // operators, as before).
+        for (bare, explicit) in [
+            ("!x^2", "!(x^2)"),
+            ("!x > 0", "(!x) > 0"),
+            ("-a < b", "(-a) < b"),
+            ("-x^2 < 0", "(-(x^2)) < 0"),
+            ("a + b < c", "(a + b) < c"),
+            ("a - b >= c * d", "(a - b) >= (c * d)"),
+            ("a * b > c / d", "(a * b) > (c / d)"),
+            ("a + b == c * d", "(a + b) == (c * d)"),
+            ("a != b + c", "a != (b + c)"),
+            ("a < b && c <= d", "(a < b) && (c <= d)"),
+            ("a == b && c != d", "(a == b) && (c != d)"),
+            ("a > b || c >= d", "(a > b) || (c >= d)"),
+            ("a && b || c && d", "(a && b) || (c && d)"),
+            ("a || b && c", "a || (b && c)"),
+            ("a && b && c", "(a && b) && c"),
+            ("a || b || c", "(a || b) || c"),
+            ("!a && b", "(!a) && b"),
+            ("!!a", "!(!a)"),
+            ("x^!a", "x^(!a)"),
+        ] {
+            assert_eq!(ops_of(bare), ops_of(explicit), "{bare} vs {explicit}");
+        }
+        assert_eq!(
+            ops_of("a < b || c"),
+            [
+                ExprOp::PushArg(0),
+                ExprOp::PushArg(1),
+                ExprOp::Lt,
+                ExprOp::PushArg(2),
+                ExprOp::Or
+            ]
+        );
+    }
+
+    #[test]
+    fn chained_comparisons_are_rejected_at_the_second_operator() {
+        for (text, column) in [
+            ("a < b < c", 7),
+            ("a >= b > c", 8),
+            ("a == b == c", 8),
+            ("a != b == c", 8),
+            ("a < b == c", 7),
+            ("a == b < c", 8),
+            ("a <= b != c > d", 8),
+            ("(a < b < c) + 1", 8),
+        ] {
+            let err = expr(VARS, &[], text).compile().unwrap_err();
+            assert_eq!(
+                err.location,
+                ExprErrorLocation::Expression { column },
+                "{text}: {}",
+                err.message
+            );
+            assert!(err.message.contains("chained"), "{text}: {}", err.message);
+            assert!(
+                err.hint.contains("(a < b) && (b < c)"),
+                "{text}: {}",
+                err.hint
+            );
+        }
+        // With parentheses, or joined by && and ||, they are fine.
+        for text in [
+            "(a < b) < c",
+            "a < (b < c)",
+            "(a == b) == c",
+            "(a < b) == (c < d)",
+            "a < b && b < c",
+            "a == b || b == c",
+        ] {
+            assert!(expr(VARS, &[], text).compile().is_ok(), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_single_equals_ampersand_or_bar_is_rejected() {
+        for (text, column) in [
+            ("a = b", 3),
+            ("a & b", 3),
+            ("a | b", 3),
+            ("a =< b", 3),
+            ("a & & b", 3),
+        ] {
+            let err = expr(VARS, &[], text).compile().unwrap_err();
+            assert_eq!(
+                err.location,
+                ExprErrorLocation::Expression { column },
+                "{text}"
+            );
+            assert!(err.message.contains("unexpected character"), "{text}");
+            assert!(
+                err.hint.contains("'=='") && err.hint.contains("'&&'") && err.hint.contains("'||'"),
+                "{text}: {}",
+                err.hint
+            );
+        }
+        // An operator without an operand.
+        for text in ["a <", "&& b", "a || ", "!", "a == != b"] {
+            assert!(expr(VARS, &[], text).compile().is_err(), "{text}");
+        }
+    }
+
+    const VALUES: [f64; 6] = [-1.0, -0.0, 0.0, 0.5, 1.0, f64::NAN];
+
+    /// The bits of a result: 1, +0 or NaN.
+    fn assert_truth(text: &str, a: f64, b: f64, got: f64, expected: Option<bool>) {
+        match expected {
+            None => assert!(got.is_nan(), "{text} with {a}, {b}: {got}"),
+            Some(t) => assert_eq!(
+                got.to_bits(),
+                if t { 1.0_f64 } else { 0.0_f64 }.to_bits(),
+                "{text} with {a}, {b}: {got}"
+            ),
+        }
+    }
+
+    #[test]
+    fn comparisons_and_logical_operators_give_1_and_plus_0_and_pass_nan_on() {
+        type Rule = fn(f64, f64) -> bool;
+        let comparisons: [(&str, Rule); 6] = [
+            ("a < b", |a, b| a < b),
+            ("a <= b", |a, b| a <= b),
+            ("a > b", |a, b| a > b),
+            ("a >= b", |a, b| a >= b),
+            ("a == b", |a, b| a == b),
+            ("a != b", |a, b| a != b),
+        ];
+        let logical: [(&str, Rule); 2] = [
+            ("a && b", |a, b| a != 0.0 && b != 0.0),
+            ("a || b", |a, b| a != 0.0 || b != 0.0),
+        ];
+        for (text, rule) in comparisons.iter().chain(&logical) {
+            let c = expr(&["a", "b"], &[], text).compile().unwrap();
+            for a in VALUES {
+                for b in VALUES {
+                    let expected = (!a.is_nan() && !b.is_nan()).then(|| rule(a, b));
+                    assert_truth(text, a, b, c.eval(&[a, b]), expected);
+                }
+            }
+        }
+        let not = expr(&["a"], &[], "!a").compile().unwrap();
+        for a in VALUES {
+            let expected = (!a.is_nan()).then_some(a == 0.0);
+            assert_truth("!a", a, a, not.eval(&[a]), expected);
+        }
+        // -0 is false, and equal to 0; the infinities are true.
+        let c = expr(&["a"], &[], "(a == 0) + !a + (a && 1)")
+            .compile()
+            .unwrap();
+        assert_eq!(c.eval(&[-0.0]), 2.0);
+        assert_eq!(c.eval(&[f64::INFINITY]), 1.0);
+        assert_eq!(c.eval(&[f64::NEG_INFINITY]), 1.0);
+        // == compares exactly.
+        let c = expr(&[], &[], "0.1 + 0.2 == 0.3").compile().unwrap();
+        assert_eq!(c.eval(&[]), 0.0);
+    }
+
+    #[test]
+    fn both_sides_of_and_and_or_are_evaluated() {
+        // No short circuit: a NaN on the right gives NaN even where the left
+        // side alone decides the result in C.
+        let c = expr(&["x"], &[], "(x >= 0) && (sqrt(x) > 1)")
+            .compile()
+            .unwrap();
+        assert!(c.eval(&[-4.0]).is_nan());
+        assert_eq!(c.eval(&[4.0]), 1.0);
+        assert_eq!(c.eval(&[0.25]), 0.0);
+        let c = expr(&["x"], &[], "(x < 0) || (ln(x) > 0)")
+            .compile()
+            .unwrap();
+        assert!(c.eval(&[-1.0]).is_nan());
+        // The guard on the value itself.
+        let c = expr(&["x"], &[], "(x >= 0) && (sqrt(max(x, 0)) > 1)")
+            .compile()
+            .unwrap();
+        assert_eq!(c.eval(&[-4.0]).to_bits(), 0.0_f64.to_bits());
+    }
+
+    fn eval1(text: &str, x: f64) -> f64 {
+        expr(&["x"], &[], text).compile().unwrap().eval(&[x])
+    }
+
+    #[track_caller]
+    fn assert_bits(text: &str, x: f64, expected: f64) {
+        let got = eval1(text, x);
+        assert_eq!(
+            got.to_bits(),
+            expected.to_bits(),
+            "{text} at {x:e}: {got:e}, expected {expected:e}"
+        );
+    }
+
+    #[test]
+    fn acos_and_asin_have_the_closed_form_values_and_nan_beyond_one() {
+        use std::f64::consts::{FRAC_PI_2, PI};
+        assert_bits("acos(x)", 1.0, 0.0);
+        assert_bits("acos(x)", -1.0, PI);
+        assert_bits("acos(x)", 0.0, FRAC_PI_2);
+        assert_bits("asin(x)", 1.0, FRAC_PI_2);
+        assert_bits("asin(x)", -1.0, -FRAC_PI_2);
+        assert_bits("asin(x)", 0.0, 0.0);
+        assert_bits("asin(x)", -0.0, -0.0);
+        let beyond = 1.0 + f64::EPSILON;
+        for text in ["acos(x)", "asin(x)"] {
+            for x in [beyond, -beyond, 2.0, f64::INFINITY, f64::NAN] {
+                assert!(eval1(text, x).is_nan(), "{text} at {x}");
+            }
+            // The guard of the hint of E251 brings it back to the edge.
+            let guarded = text.replace("(x)", "(min(max(x, -1), 1))");
+            assert!(eval1(&guarded, beyond).is_finite(), "{guarded}");
+        }
+    }
+
+    #[test]
+    fn floor_ceil_trunc_and_round_follow_c() {
+        let below_half = 0.499_999_999_999_999_94_f64; // the largest double below 0.5
+        assert!(below_half < 0.5 && below_half + f64::EPSILON / 4.0 >= 0.5);
+        let big = 4_503_599_627_370_495.5_f64; // 2^52 - 0.5
+                                               // x, floor, ceil, trunc, round (halves away from 0)
+        let table = [
+            (0.0, 0.0, 0.0, 0.0, 0.0),
+            (-0.0, -0.0, -0.0, -0.0, -0.0),
+            (0.5, 0.0, 1.0, 0.0, 1.0),
+            (-0.5, -1.0, -0.0, -0.0, -1.0),
+            (1.5, 1.0, 2.0, 1.0, 2.0),
+            (-1.5, -2.0, -1.0, -1.0, -2.0),
+            (2.5, 2.0, 3.0, 2.0, 3.0),
+            (-2.5, -3.0, -2.0, -2.0, -3.0),
+            (-1.7, -2.0, -1.0, -1.0, -2.0),
+            (below_half, 0.0, 1.0, 0.0, 0.0),
+            (-below_half, -1.0, -0.0, -0.0, -0.0),
+            (big, big - 0.5, big + 0.5, big - 0.5, big + 0.5),
+            (-big, -big - 0.5, -big + 0.5, -big + 0.5, -big - 0.5),
+            (
+                9_007_199_254_740_992.0,
+                9_007_199_254_740_992.0,
+                9_007_199_254_740_992.0,
+                9_007_199_254_740_992.0,
+                9_007_199_254_740_992.0,
+            ),
+            (
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::INFINITY,
+                f64::INFINITY,
+            ),
+        ];
+        for (x, floor, ceil, trunc, round) in table {
+            assert_bits("floor(x)", x, floor);
+            assert_bits("ceil(x)", x, ceil);
+            assert_bits("trunc(x)", x, trunc);
+            assert_bits("round(x)", x, round);
+        }
+        // floor(x + 0.5) is not round: the sum rounds up to 1.
+        assert_bits("floor(x + 0.5)", below_half, 1.0);
+        for text in ["floor(x)", "ceil(x)", "trunc(x)", "round(x)"] {
+            assert!(eval1(text, f64::NAN).is_nan(), "{text}");
+        }
+        // The wrap of a phase into [0, 2 pi) and [-pi, pi], as in the docs.
+        let wrap = expr(&["x"], &[], "x - 2*pi*floor(x/(2*pi))")
+            .compile()
+            .unwrap();
+        assert!((wrap.eval(&[-0.5]) - (2.0 * std::f64::consts::PI - 0.5)).abs() < 1e-15);
+        let wrap = expr(&["x"], &[], "x - 2*pi*round(x/(2*pi))")
+            .compile()
+            .unwrap();
+        assert!((wrap.eval(&[7.0]) - (7.0 - 2.0 * std::f64::consts::PI)).abs() < 1e-15);
+        for bad in ["floor()", "round(x, x)", "acos(x, 1)"] {
+            assert!(expr(&["x"], &[], bad).compile().is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_operators_and_functions_of_0_10_are_listed_as_additions() {
+        let c = expr(VARS, &[], "!(a >= b) || floor(c) == d")
+            .compile()
+            .unwrap();
+        let listed: Vec<(&str, &str, usize)> = c
+            .additions()
+            .iter()
+            .map(|a| (a.version, a.what.as_str(), a.column))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ("0.10", "'!'", 1),
+                ("0.10", "'>='", 5),
+                ("0.10", "'||'", 11),
+                ("0.10", "floor", 14),
+                ("0.10", "'=='", 23)
+            ]
+        );
+        assert!(expr(VARS, &[], "sin(a) - b^2")
+            .compile()
+            .unwrap()
+            .additions()
+            .is_empty());
+    }
+
+    #[test]
+    fn the_new_function_names_are_reserved_only_from_0_10_on() {
+        // In 0.9, round and floor are free for signals and variables.
+        let old = expr(&["round"], &[("floor", "f.x")], "2*round + floor");
+        let c = old.compile_for("0.9").unwrap();
+        assert_eq!(c.resolved_signals(), ["round", "f.x"]);
+        assert_eq!(c.eval(&[1.5, 3.0]), 6.0);
+        assert!(c.additions().is_empty());
+        // ... and a call of such a signal is an unknown function, as before.
+        let err = expr(&["round", "x"], &[], "round(x)")
+            .compile_for("0.9")
+            .unwrap_err();
+        assert!(
+            err.message.contains("unknown function \"round\""),
+            "{}",
+            err.message
+        );
+        assert!(!err.hint.contains("floor"), "{}", err.hint);
+        // In 0.10 they are built-in functions.
+        let err = old.compile_for("0.10").unwrap_err();
+        assert_eq!(err.field_path(), "variables.floor");
+        assert!(err.message.contains("collides"), "{}", err.message);
+        let err = expr(&["round"], &[], "2*round")
+            .compile_for("0.10")
+            .unwrap_err();
+        assert!(
+            err.message.contains("without parentheses"),
+            "{}",
+            err.message
+        );
+        let err = expr(&["x"], &[], "foo(x)").compile_for("0.10").unwrap_err();
+        assert!(
+            err.hint.contains("acos, asin, floor, ceil, round, trunc"),
+            "{}",
+            err.hint
+        );
+        // In 0.9 a call of a function of 0.10 compiles and is listed (for
+        // E102), and so does an operator.
+        let c = expr(&["x"], &[], "acos(x)").compile_for("0.9").unwrap();
+        assert_eq!(c.additions()[0].what, "acos");
+        let c = expr(&["x"], &[], "x > 0").compile_for("0.8").unwrap();
+        assert_eq!(c.additions()[0].what, "'>'");
+        // A version that is not supported reads like the oldest ones.
+        assert!(expr(&["round"], &[], "round").compile_for("9.9").is_ok());
+    }
+
+    #[test]
+    fn deep_logical_nesting_stays_within_the_limits() {
+        let nots = format!("{}x", "!".repeat(MAX_PARSE_DEPTH));
+        assert_eq!(
+            expr(&["x"], &[], &nots).compile().unwrap().eval(&[0.0]),
+            0.0
+        );
+        let too_many = format!("{}x", "!".repeat(MAX_PARSE_DEPTH + 1));
+        assert!(expr(&["x"], &[], &too_many).compile().is_err());
+        // 70 comparisons joined by &&, nested to the right: more than 64
+        // stack slots.
+        let mut text = String::new();
+        for _ in 0..70 {
+            text.push_str("x < 1 && (");
+        }
+        text.push_str("x < 1");
+        text.push_str(&")".repeat(70));
+        let c = expr(&["x"], &[], &text).compile().unwrap();
+        assert_eq!(c.eval(&[0.0]), 1.0);
+        assert_eq!(c.eval(&[2.0]), 0.0);
     }
 }

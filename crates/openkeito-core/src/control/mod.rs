@@ -111,6 +111,8 @@ pub(crate) struct Build<'a> {
     pub slot: usize,
     /// The time step.
     pub h: f64,
+    /// The `version` that the model declares.
+    pub version: &'a str,
 }
 
 impl Build<'_> {
@@ -251,10 +253,12 @@ pub(crate) struct Controls {
 impl Controls {
     /// Builds the blocks of a validated model for the time step `h`.
     /// `measurement` maps the index of a measuring block to the index of its
-    /// first value in the slice that `evaluate` receives.
+    /// first value in the slice that `evaluate` receives. `version` is the
+    /// one the model declares.
     pub fn new(
         controls: &[model::Control],
         h: f64,
+        version: &str,
         measurement: impl Fn(usize) -> usize,
     ) -> Controls {
         let names = model::signal_names(controls);
@@ -281,6 +285,7 @@ impl Controls {
                         index: &index,
                         slot: measurement(i),
                         h,
+                        version,
                     },
                 )
             })
@@ -503,7 +508,7 @@ mod tests {
 
     /// The controls for a time step `h`, with every measurement in slot 0.
     fn controls(h: f64, json: serde_json::Value) -> Controls {
-        Controls::new(&blocks(json), h, |_| 0)
+        Controls::new(&blocks(json), h, model::VERSION, |_| 0)
     }
 
     #[test]

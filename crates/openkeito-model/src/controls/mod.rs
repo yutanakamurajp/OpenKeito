@@ -45,6 +45,8 @@ pub(crate) struct Scope<'a> {
     /// `simulation.time_step_s`; not finite or not positive when that field
     /// is wrong (reported on its own).
     pub time_step_s: f64,
+    /// The `version` that the model declares.
+    pub version: &'a str,
 }
 
 /// What validation and the catalog need to know about a block type.

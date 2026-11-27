@@ -4,7 +4,8 @@
 // The circuit symbols follow the forms of IEC 60617 where it has one
 // (resistor, inductor, capacitor, ideal sources, make contact, diode,
 // thyristor, two-winding transformer, machine, converter, earth) and are composed of
-// its elements otherwise (see web/README.md for the table). A control block
+// its elements otherwise (the dependent sources take the diamond of the
+// textbooks, which IEC 60617 does not have; see web/README.md for the table). A control block
 // is a rectangle with a qualifying mark.
 //
 // A symbol is drawn once, lying, in a frame of SYMBOL_WIDTH: x from 0 to
@@ -51,6 +52,27 @@ const circle = (r, cx = W / 2, cy = 0) => ["c", cx, cy, r];
 /// acts on.
 const controlled = (fromY) => [["d", W / 2, fromY, W / 2, 10], ["r", W / 2 - 3.5, 10, 7, 4]];
 const arrowOnLead = ["f", [36, -3, 41.5, 0, 36, 3]];
+
+/// A dependent source on two tracks: its control or sense port on the left
+/// (control[0] or sense[0] above), its output on the right (output[0]
+/// above), a diamond for the output and a dashed link from the port to it.
+/// `voltage`: + and − in the diamond (vcvs, ccvs), otherwise the arrow of the
+/// output current from output[0] to output[1] (vccs, cccs). `sense`: the
+/// port is a branch of 0 V with the arrow of its current from sense[0] to
+/// sense[1]; otherwise two open ends, + above.
+function dependent(voltage, sense) {
+  const port = sense
+    ? [lead(0, 9), lead(0, 9, TRACK), ["l", 9, 0, 9, TRACK], ["f", [6.5, 6, 9, 10, 11.5, 6]], ["d", 9, 8, 21, 8]]
+    : [lead(0, 8), lead(0, 8, TRACK), ["c", 9.5, 0, 1.5], ["c", 9.5, TRACK, 1.5], ["t", 14, 4, "+", 7], ["t", 14, 20, "−", 7], ["d", 11, 8, 21, 8]];
+  const inside = voltage
+    ? [["t", 28, 6.5, "+", 6.5], ["t", 28, 14.5, "−", 6.5]]
+    : [["l", 28, 3, 28, 10], ["f", [25.8, 10, 28, 13.5, 30.2, 10]]];
+  return {
+    tracks: 2,
+    ports: { [sense ? "sense[0]" : "control[0]"]: ["L", 0], [sense ? "sense[1]" : "control[1]"]: ["L", 1], "output[0]": ["R", 0], "output[1]": ["R", 1] },
+    body: [...port, ["g", [28, 0, 35, 8, 28, TRACK, 21, 8]], lead(28, W), lead(28, W, TRACK), ...inside],
+  };
+}
 
 function draw(prims, flip) {
   const fx = (x) => (flip ? W - x : x);
@@ -239,6 +261,10 @@ export const CIRCUIT = {
     right: 35,
     body: [["r", 9, -11, 26, 22], ["l", 9, 11, 35, -11], ["t", 16, -2, "~", 10], ["t", 28.5, 9, "=", 9]],
   },
+  vcvs: dependent(true, false),
+  vccs: dependent(false, false),
+  cccs: dependent(false, true),
+  ccvs: dependent(true, true),
 };
 
 // ---- control blocks: the mark inside the rectangle ----
