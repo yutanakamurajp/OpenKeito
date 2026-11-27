@@ -48,10 +48,10 @@ def test_every_item_wrote_its_files(out):
     for name in ("integration_order", "numerical_oscillation", "buck_switching", "diode_bridge", "pwm_accuracy",
                  "thyristor_rectifier", "fault_currents",
                  "steady_state", "line_models", "machine_short_circuit", "converter_response", "controls_v07",
-                 "expression_control", "ai_control", "wecc_ibr", "ieee39_diagram", "performance"):
+                 "expression_control", "ai_control", "wecc_ibr", "grid_tests", "ieee39_diagram", "performance"):
         for suffix in ("pdf", "png"):
             assert (out / f"{name}.{suffix}").stat().st_size > 1000, name
-    for name in ("fault_currents_table", "controls_v07_table", "diagnostics_table"):
+    for name in ("fault_currents_table", "controls_v07_table", "diagnostics_table", "grid_tests_table"):
         assert (out / f"{name}.tex").read_text(encoding="utf-8").count("\\\\") > 3
     # Run times are only written on request.
     assert not list(out.glob("*_measured.csv"))
@@ -308,3 +308,12 @@ def test_quick_repeatability_and_settings_guard(tmp_path):
         capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
     )
     assert mismatch.returncode != 0
+
+
+def test_the_grid_tests_judge_18_cases(out):
+    numbers = json.loads((out / "numbers.json").read_text(encoding="utf-8"))["grid_tests"]
+    assert numbers["cases, passed, failed"] == [18, 17, 1]
+    assert numbers["failed cases"] == ["scr1.2.dip"]
+    assert numbers["PLL 80 Hz: failed cases"] == ["scr1.2.fault", "scr1.2.jump", "scr1.2.dip"]
+    table = rows(out / "grid_tests.csv")
+    assert len(table) == 72 and sum(r["result"] == "fail" for r in table) == 1

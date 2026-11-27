@@ -85,6 +85,18 @@ pub(crate) trait Block {
     /// the instant within a step at which a gate signal changes
     /// (`simulation.switching` = "interpolated"). The block is not changed.
     fn preview(&self, _t: f64, _signals: &[f64], _out: &mut [f64]) {}
+
+    /// True for a block whose output is a function of time that turns
+    /// within a step (a carrier); only these are asked for `vertices`.
+    fn has_vertices(&self) -> bool {
+        false
+    }
+
+    /// Adds to `out` the times strictly between `ta` and `tb` at which the
+    /// output turns from rising to falling or back. A pulse that a carrier
+    /// makes and ends within one step is widest there, so the solver
+    /// previews these times as well as the end of the step.
+    fn vertices(&self, _ta: f64, _tb: f64, _out: &mut Vec<f64>) {}
 }
 
 /// Largest number of outputs of a block.
@@ -223,6 +235,8 @@ pub(crate) struct Controls {
     plan: Vec<model::EvaluationGroup>,
     /// The blocks with a state.
     stateful: Vec<usize>,
+    /// The blocks whose output turns within a step (see `Block::vertices`).
+    turning: Vec<usize>,
     names: Vec<String>,
     h: f64,
     started: bool,
@@ -275,6 +289,9 @@ impl Controls {
         let stateful = (0..blocks.len())
             .filter(|&i| blocks[i].has_state())
             .collect();
+        let turning = (0..blocks.len())
+            .filter(|&i| blocks[i].has_vertices())
+            .collect();
         let widest = ranges.iter().map(|r| r.1).max().unwrap_or(0);
         assert!(widest <= MAX_OUTPUTS, "a block has {widest} outputs");
         Controls {
@@ -286,6 +303,7 @@ impl Controls {
             ranges,
             plan,
             stateful,
+            turning,
             values: vec![0.0; names.len()],
             names,
             h,
@@ -437,6 +455,23 @@ impl Controls {
         self.preview_with_overrides(t, out, &[])
     }
 
+    /// True when a block has vertices within steps (see `Block::vertices`).
+    pub fn has_vertices(&self) -> bool {
+        !self.turning.is_empty()
+    }
+
+    /// Writes to `out` the times strictly between `ta` and `tb` at which the
+    /// output of a block turns (see `Block::vertices`), in increasing order.
+    pub fn vertices(&self, ta: f64, tb: f64, out: &mut Vec<f64>) {
+        out.clear();
+        for &i in &self.turning {
+            self.blocks[i].vertices(ta, tb, out);
+        }
+        if self.turning.len() > 1 {
+            out.sort_by(f64::total_cmp);
+        }
+    }
+
     /// Like `preview`, keeping any `overrides` held over the step.
     pub fn preview_with_overrides(&self, t: f64, out: &mut [f64], overrides: &[(usize, f64)]) {
         let mut outputs = [0.0; MAX_OUTPUTS];
@@ -502,6 +537,37 @@ mod tests {
         // At t = 0.45 ms the carrier is 1 - 2*0.1*2 = 0.8 > 0.4.
         k.evaluate(4.5e-4, &[0.2]).unwrap();
         assert_eq!(k.values[0], 0.0);
+    }
+
+    #[test]
+    fn vertices_of_the_carriers_lie_strictly_within_the_interval_in_order() {
+        let k = controls(
+            1e-4,
+            serde_json::json!([
+                {"type": "triangle_wave", "name": "a", "frequency_hz": 1000.0},
+                // A quarter of a period ahead: vertices at 0.25, 0.75 ms, ...
+                {"type": "triangle_wave", "name": "b", "frequency_hz": 1000.0, "phase_deg": 90.0},
+                {"type": "triangle_wave", "name": "flat", "frequency_hz": 1000.0, "minimum": 0.5, "maximum": 0.5},
+                {"type": "sine_wave", "name": "s", "amplitude": 1.0, "frequency_hz": 50.0},
+            ]),
+        );
+        assert!(k.has_vertices());
+        let mut out = vec![9.0];
+        k.vertices(0.4e-3, 1.6e-3, &mut out);
+        let expected = [0.5e-3, 0.75e-3, 1.0e-3, 1.25e-3, 1.5e-3];
+        assert_eq!(out.len(), expected.len(), "{out:?}");
+        for (t, e) in out.iter().zip(expected) {
+            assert!((t - e).abs() < 1e-15, "{out:?}");
+        }
+        // The ends of the interval are not vertices within it.
+        k.vertices(0.5e-3, 1.0e-3, &mut out);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert!((out[0] - 0.75e-3).abs() < 1e-15);
+        let none = controls(
+            1e-4,
+            serde_json::json!([{"type": "sine_wave", "name": "s", "amplitude": 1.0, "frequency_hz": 50.0}]),
+        );
+        assert!(!none.has_vertices());
     }
 
     #[test]

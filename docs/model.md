@@ -228,8 +228,10 @@ only, and has neither a path nor a time in it.
   becomes positive, if the gate still fires it then. Once on it stays on, whatever the
   gate, until its current is negative, and turns off as a diode does. It has the two
   resistances of a diode with the same defaults, and no turn-off time and no holding
-  current. A pulse of the gate that starts and ends within one time step is not seen (as
-  for a `controlled_switch`).
+  current. A pulse of the gate that starts and ends within one time step is seen only with
+  `"switching": "interpolated"` and only when a `triangle_wave` turns within it (as for a
+  `controlled_switch`; see
+  [numerical-method.md](numerical-method.md#switching-instants-within-a-step)).
 - Choosing the two resistances: the defaults are the order of one device at its rated
   current (a press-pack thyristor or diode, an IGBT module). From a data sheet,
   `on_resistance_ohm` = n·(V_T0 + r_T·I)/I for n devices in series with threshold voltage
@@ -836,5 +838,6 @@ errors, with W warnings.
 | E301, W301 | validation, run | `threads` |
 | E400–E403 | validation | batch files |
 | E500–E507 | validation | schedule files (see [python.md](python.md#schedules-and-time-slices)) |
+| E510–E517 | Python | requirement files of grid-connection tests, checked by `openkeito.requirements` (see [python.md](python.md#requirement-files)) |
 | E600 | browser | a batch file given to the WebAssembly module, which has no files and no threads |
 | E700 | transition | a synchronous machine stops and returns to service during a transition without both a governor and an excitation system (see [python.md](python.md#transitions)) |

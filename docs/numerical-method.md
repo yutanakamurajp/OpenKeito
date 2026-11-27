@@ -1566,8 +1566,13 @@ Where the instants come from:
   previewed time, to 2⁻⁴⁰ of a step. With a constant reference the PWM edges are the
   crossings of reference and carrier, exact to rounding; a reference that follows a
   measurement is sampled at grid points and held for one step (a delay of at most one
-  step, half a step on average, and no quantization of the duty). A pulse that begins and
-  ends within one step is not seen.
+  step, half a step on average, and no quantization of the duty). The signals are
+  previewed at the end of the part and, when no element would switch there, at the
+  vertices of every `triangle_wave` within the part (its minima and maxima): a pulse that
+  begins and ends within one step is widest at a vertex of the carrier, so it is found
+  there and its edges by bisection between the start of the part and the vertex. A pulse
+  that begins and ends within one step while the end of the part shows a switch (three
+  edges in one part), or that no vertex of a carrier holds, is not seen.
 - **Zero crossings** (a diode or thyristor; a contact that opens at a current zero): each
   such element has a zero-crossing function, positive while its state holds (the current
   of a conducting diode or thyristor, the reverse voltage of a blocking diode or fired
@@ -1676,10 +1681,10 @@ difference off (below 1e-5 A with fixed modulation). 2S-DIRK,
 | Within the step, no dead time | 5 µs | 7.6e-4 A (7.4e-6) | 6.2e-6 | 1.2e-4° | 2741 | 0.38 s |
 | | 10 µs | 3.0e-3 A (2.9e-5) | 2.3e-5 | 1.8e-4° | 2739 | 0.31 s |
 | | 20 µs | 1.0e-2 A (9.8e-5) | 6.5e-5 | 9.0e-4° | 2739 | 0.27 s |
-| | 25 µs | 5.5 A (5.4e-2) | 1.0e-2 | 2.7° | 2705 | 0.26 s |
+| | 25 µs | 1.3e-2 A (1.3e-4) | 6.2e-5 | 9.4e-4° | 2739 | 0.26 s |
 | Within the step, dead time 2 µs | 10 µs | 3.1e-3 A (3.1e-5) | 2.6e-5 | 4.3e-4° | 2743 | 0.44 s |
 | | 20 µs | 1.1e-2 A (1.0e-4) | 8.7e-5 | 1.0e-3° | 2743 | 0.42 s |
-| | 25 µs | 6.0 A (5.9e-2) | 8.1e-3 | 3.0° | 2707 | 0.38 s |
+| | 25 µs | 1.6e-2 A (1.6e-4) | 1.3e-4 | 1.7e-3° | 2743 | 0.38 s |
 | At grid points, no dead time | 1 µs | 1.1 A (1.1e-2) | 7.6e-3 | 0.21° | 2741 | 0.64 s |
 | | 20 µs | 15 A (0.14) | 0.11 | 5.0° | 2737 | 0.13 s |
 
@@ -1691,21 +1696,25 @@ step: at most 6 switching events in one step of 20 µs, far below the limit of p
 instants (56 here); no step reached it (no W270) and no run stopped (no E202) from 0.5 to
 25 µs.
 
-Two limits show:
+Two effects show:
 
 - **Pulses narrower than a step.** At M = 0.89 the narrowest pulse lasts (1 − M)·T_c/2 =
-  22.4 µs. The instants of the gate are found from the signals previewed at the end of the
-  part being solved (above), so a pulse that begins and ends within one step of 25 µs is not
-  seen: 36 events are missing and the error jumps from 1e-2 A to 5.5 A. With switching
-  within the step, the step has to be below the narrowest pulse.
+  22.4 µs, so at 25 µs some pulses begin and end within one step. They are found at the
+  vertex of the carrier (above): every pulse is seen (2739 events, as at 10 and 20 µs) and
+  the error of the carrier averages grows from 20 to 25 µs by 1.35 (no dead time) and 1.52
+  (dead time 2 µs), against (25/20)² = 1.56. When only the end of the part was previewed
+  (to 0.14.0), 36 events were missing at 25 µs and the error jumped to 5.5 A (6.0 A with the
+  dead time); the runs from 0.5 to 20 µs with fixed modulation are unchanged by the vertices.
 - **Controls that read the circuit.** With PI current control in the rotating frame (gains
   4 Ω and 400 Ω/s, the grid voltage fed forward, the angle a ramp of ωt), the controls are
   evaluated at grid points on the measured current, ripple included, and held for a step.
   That sampling is of first order: from 1 to 0.5 µs the difference falls by 1.6 to 2.1, not
-  4. At 20 µs the amplitude is off by 1.2 %, the phase by 0.51°, the carrier averages by
-  3.3 A (3.2 % of the rated peak; at 10 µs 0.27 %, 0.18° and 0.72 A), and the ripple that the
-  controls sample makes more narrow pulses (2553 events against 2679). At grid points the
-  same case is off by 19 A and 4.7° at 20 µs.
+  4, and from 20 to 10 µs by 1.7 to 1.8. At 20 µs the amplitude is off by 0.83 %, the phase
+  by 0.39°, the carrier averages by 1.2 A (1.2 % of the rated peak; at 10 µs 0.27 %, 0.19°
+  and 0.72 A; at 25 µs 0.91 %, 0.43° and 1.7 A). The ripple that the controls sample makes
+  narrow pulses, which the vertices of the carrier find (2673 events against 2679 at
+  20 µs; with the end of the part previewed only, 2553 events and 3.3 A). At grid points
+  the same case is off by 19 A and 4.7° at 20 µs.
 
 `grid` is twice as fast per step and about 1500 times less accurate here; `interpolated`
 at 20 µs is 100 times more accurate than `grid` at 1 µs in less than half the time.

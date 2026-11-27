@@ -127,6 +127,22 @@ impl Block for Triangle {
         out[0] = self.minimum
             + (self.maximum - self.minimum) * triangle(self.frequency_hz * t + self.phase);
     }
+    fn has_vertices(&self) -> bool {
+        self.frequency_hz > 0.0 && self.maximum != self.minimum
+    }
+    fn vertices(&self, ta: f64, tb: f64, out: &mut Vec<f64>) {
+        // The minimum and the maximum at every half period: f t + phase =
+        // k / 2.
+        let f = self.frequency_hz;
+        let first = (2.0 * (f * ta + self.phase)).floor() as i64;
+        let last = (2.0 * (f * tb + self.phase)).ceil() as i64;
+        for k in first..=last {
+            let t = (0.5 * k as f64 - self.phase) / f;
+            if t > ta && t < tb {
+                out.push(t);
+            }
+        }
+    }
 }
 
 /// 1 when the first input is above the second, otherwise 0.

@@ -234,8 +234,11 @@ impl Simulator {
     /// part from `ta` is solved and leaves at least `min_part` up to the
     /// grid point `t1`: a time at which an element acts on its own, or the
     /// instant from which an element would switch on the previewed control
-    /// signals (found by bisection, to 2^-40 of the step). Later instants
-    /// are left to the grid point.
+    /// signals (found by bisection, to 2^-40 of the step). The signals are
+    /// previewed at the end of the part and, when no element would switch
+    /// there, at the vertices of the carriers within it: a pulse that
+    /// begins and ends within the part is widest at a vertex. Later
+    /// instants are left to the grid point.
     pub(super) fn next_scheduled(
         &mut self,
         ta: f64,
@@ -258,8 +261,20 @@ impl Simulator {
             .filter(|&t| t < t1 - min_part);
         let mut gate = None;
         if !self.signal_readers.is_empty() && !self.controls.is_empty() {
-            let end = at.unwrap_or(t1);
-            if self.would_switch_at(end, w) {
+            let mut end = at.unwrap_or(t1);
+            let mut switches = self.would_switch_at(end, w);
+            if !switches && self.controls.has_vertices() {
+                self.controls.vertices(ta, end, &mut w.vertices);
+                for k in 0..w.vertices.len() {
+                    let v = w.vertices[k];
+                    if self.would_switch_at(v, w) {
+                        end = v;
+                        switches = true;
+                        break;
+                    }
+                }
+            }
+            if switches {
                 let (mut lo, mut hi) = (ta, end);
                 for _ in 0..40 {
                     let mid = 0.5 * (lo + hi);

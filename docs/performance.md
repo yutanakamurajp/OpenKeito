@@ -444,7 +444,9 @@ P core, 0.06 s simulated with a row every µs, one run each; the time includes t
 
 From 10 µs on the time hardly falls with a larger step: the 2741 events of 60 ms (each a placed
 instant with its factorization and trial solution) cost the same at every step. A dead time
-shorter than the step adds one instant per edge.
+shorter than the step adds one instant per edge. Previewing the vertices of the carrier
+within a step (0.15.0, which finds the pulses narrower than 25 µs) leaves these times as
+they were: at 25 µs 0.253 and 0.388 s before, 0.261 and 0.387 s after (one run each).
 
 ## Eight PWM inverters on lines, before parallel switching steps (M11, issue #51)
 

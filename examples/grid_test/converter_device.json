@@ -1,0 +1,24 @@
+{
+  "format": "openkeito-model",
+  "version": "0.5",
+  "name": "device under test: an averaged grid-following converter at its point of connection",
+  "description": "The converter of examples/converter.json (2 MVA, 6.6 kV, with its default reactor, phase-locked loop and current control) delivering 1.6 MW (0.8 per unit) and no reactive power at the bus poi, its point of connection, at 6.6 kV. The model has no grid: it is the device of the requirement file requirements.json, and openkeito.gridtest attaches a grid equivalent at poi (docs/python.md, Grid-connection tests). It does not run by itself.",
+  "simulation": {
+    "time_step_s": 5e-05,
+    "end_time_s": 1.0,
+    "initialization": "steady_state"
+  },
+  "components": [
+    {"type": "grid_following_converter", "name": "PV1", "bus": "poi", "rated_power_mva": 2.0, "rated_voltage_kv": 6.6, "rated_frequency_hz": 50.0, "reference": {"type": "power", "active_power_mw": 1.6, "reactive_power_mvar": 0.0}, "operating_point": {"active_power_mw": 1.6, "reactive_power_mvar": 0.0, "voltage_kv": 6.6, "angle_deg": 0.0}}
+  ],
+  "outputs": [
+    {"type": "bus_voltage", "bus": "poi"},
+    {"type": "branch_current", "component": "PV1"},
+    {"type": "signal", "signal": "PV1.p"},
+    {"type": "signal", "signal": "PV1.q"},
+    {"type": "signal", "signal": "PV1.v_d"},
+    {"type": "signal", "signal": "PV1.i_d"},
+    {"type": "signal", "signal": "PV1.i_q"},
+    {"type": "signal", "signal": "PV1.pll.frequency_hz"}
+  ]
+}

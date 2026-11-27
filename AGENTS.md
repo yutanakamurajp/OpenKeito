@@ -32,8 +32,9 @@ contributors.
   module `openkeito._native`) and `openkeito-wasm` (the WebAssembly module, which uses
   `openkeito-cli` without `native`). The Python package is `python/openkeito`: the run API,
   `schedule`, the converters `pandapower` and `powsybl` (with `convert` in common),
-  `transition` (from one schedule time to the next, or through several) and the MCP server
-  `mcp_server` (command `openkeito-mcp`).
+  `transition` (from one schedule time to the next, or through several), the grid-connection
+  tests `gridtest`, `metrics` and `requirements` (requirement files run and judged as a batch)
+  and the MCP server `mcp_server` (command `openkeito-mcp`).
 - `web/` is the browser page on `openkeito-wasm` (plain HTML, CSS and ES modules, no
   dependencies; [web/README.md](web/README.md)). `paper/` holds the scripts that reproduce
   figures and tables (`python paper/make.py`; [paper/README.md](paper/README.md)).

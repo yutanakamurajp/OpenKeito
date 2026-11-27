@@ -10,6 +10,10 @@ flow, and runs schedules as time slices and transitions. This page describes:
   [short-circuit data](#short-circuit-data) and [phase-angle clocks](#phase-angle-clocks);
 - [schedules and time slices](#schedules-and-time-slices);
 - [transitions](#transitions) from one time of a schedule to the next;
+- [grid-connection tests](#grid-connection-tests): a grid equivalent from a short-circuit
+  ratio, disturbances of its voltage and a device attached to it, [response
+  metrics](#response-metrics), and [requirement files](#requirement-files) that run and judge
+  a set of such tests;
 - [diagram layout sidecars](#diagram-layout-sidecars) from bus coordinates or pandapower geodata.
 
 The MCP server that comes with the package has [a page of its own](mcp.md). The model
@@ -440,6 +444,224 @@ The network is converted at both times (by default with `generators="machine"` a
 network. `add_machine_controls(conv)` also gives the machines of any conversion an
 excitation system and a governor, for time slices with a disturbance; `pss=True` adds the
 stabilizer, which is off by default there.
+
+## Grid-connection tests
+
+`openkeito.gridtest` puts a device under test (a model with a bus at its point of
+connection) behind a grid equivalent and disturbs the grid:
+
+```python
+from openkeito.gridtest import GridEquivalent, PhaseJump, VoltageStep, Fault, attach
+grid = GridEquivalent(rated_power_mva=2.0, rated_voltage_kv=6.6, scr=3.0, x_over_r=10.0)
+test = attach("examples/grid_test/converter_device.json", "poi", grid,
+              [PhaseJump(time_s=0.2, angle_deg=30.0)], end_time_s=1.0)
+result = openkeito.run(test.model)
+test.injection_mva, test.source_voltage     # 1.6 MW at the point of connection; E (V, line rms)
+```
+
+- **The equivalent.** A voltage source behind the impedance of the short-circuit ratio,
+  from a bus of its own (`grid_src`) to the point of connection: the short-circuit power is
+  `scr` times `rated_power_mva` (the rating of the device), |Z| = V²/S_sc,
+  R = |Z|/√(1 + (X/R)²), X = (X/R)·R (`x_over_r=math.inf`: a reactance only). It is a
+  `coupled_rl` named `grid_z` with the same impedance in every sequence unless
+  `z0_over_z1` says otherwise. `grid.impedance_ohm` gives R + jX.
+- **The steady state.** The run starts from the steady state of the device at its operating
+  point (`"initialization": "steady_state"` is set): the point of connection at `voltage_kv`
+  and `angle_deg`, by default those of the `operating_point` of a `grid_following_converter`
+  at that bus (else the rated voltage and 0°). The power the device delivers there
+  (`injection_mva`, by default found by solving the device with that bus held at that
+  voltage; the device is taken as balanced) gives the internal voltage E = V − Z·I of the
+  source, I the current into the grid. The equivalent of a weaker grid has a larger E and
+  angle; the device does not change.
+- **Disturbances** of the internal voltage, each from `time_s` (and back after `duration_s`
+  when it is given): `VoltageStep(time_s, change_pu)` (−0.1: to 90 % of the magnitude),
+  `PhaseJump(time_s, angle_deg)`, `FrequencyStep(time_s, change_hz)` and
+  `FrequencyRamp(time_s, rate_hz_per_s, duration_s)` (the frequency changes at the rate for
+  the duration and then stays; the angle is its integral). With any of them the source is a
+  `three_phase_controlled_source` whose phase voltages are control blocks of format 0.5
+  (`grid_theta`, `grid_ed`, `grid_angle`, `grid_e` and steps and ramps), so a device of
+  format 0.5 or later keeps its format version; `attach` refuses (`ValueError`) a device of
+  an older `version` (0.3 is enough without such a disturbance: the source, `coupled_rl` and
+  `fault`) and does not change it. Such a source follows its signals one step late, so the blocks are
+  written one step ahead: in the steady state the source is the sine of the equivalent at
+  every grid point, and a step of magnitude or angle at `time_s` happens over the step that
+  starts at the first grid point at or after `time_s`. `Fault(time_s, duration_s)` is a
+  `fault` at the point of connection (three-phase to ground by default; `phases`, `ground`,
+  `bus`), through `resistance_ohm` or the resistance that leaves `residual_voltage_pu` of the
+  voltage with the grid alone (`fault_resistance_for`); its phases open at their current
+  zeros.
+- The names added are `grid`, `grid_z`, `grid_src`, `grid_fault` and `grid_<...>`; a model
+  that already uses one is refused (`name=` gives another prefix). The bus voltage of the
+  point of connection is added to the outputs.
+- **Checks** (`python/tests/test_gridtest.py`): the impedance is the hand calculation within
+  1e-12 for SCR 1.2, 2, 3 and 10 and X/R 3 and 10, and the frequency scan of the model sees
+  it at 50 Hz within 1e-9; at an open end a phase jump of ±20° or ±40° is the angle of the
+  one-period DFT within 1e-12° and takes one step; the frequency of a ramp of 1 Hz/s and of
+  a step of 0.5 Hz, from the angle of the phase voltages, is the formula within 1.2e-10 Hz
+  (the tests ask for 1e-9° and 1e-8 Hz); a device older than format 0.5 is refused with a
+  disturbance of the source; a step of −10 % and a
+  fault that leaves 0.3 per unit are seen by the DFT within 1e-9 and 1e-4. The converter of
+  `examples/grid_test/converter_device.json` stays at its operating point before the
+  disturbance within 2.4e-5 per unit of P, Q and voltage at SCR 10, 3 and 1.2 (50 µs).
+
+### Response metrics
+
+`openkeito.metrics` takes the columns of a run (a `Result`, or `read_result("out/run")`
+for a result.csv) as numpy arrays:
+
+```python
+from openkeito import metrics
+t = result.time
+va, vb, vc = metrics.phases(result, "V(poi.{})")
+seq = metrics.sequence_series(t, va, vb, vc, 50.0)          # one-period DFT ending at each row
+v1 = abs(seq["positive"]) / (6600 / 3**0.5)                  # positive sequence, per unit
+metrics.overvoltage(t, v1, 1.1)                              # maximum, duration_s, longest_s, first_s
+metrics.envelope(t, v1, [(0.0, 0.2), (0.15, 0.85)], start_time_s=0.2)   # a ride-through curve
+metrics.step_response(t, result["S(PV1.p)"], 0.2)            # rise, delay, settling, overshoot
+metrics.harmonics(t, result["I(PV1.a)"], 50.0, cycles=10)    # amplitudes by order, thd
+metrics.difference(t, x, y, windows={"fault": (0.2, 0.35)})  # max_abs, mean, mean_abs, rms
+```
+
+| Function | What it gives | Window |
+|---|---|---|
+| `dft`, `sliding_phasor` | the rms phasor (cosine reference at t = 0) of a harmonic order | `cycles` periods (default 1) ending at `end_time_s` (default the last row), or at every row (NaN before the first full window) |
+| `sequence_components`, `sequence_series` | zero, positive and negative sequence of three phases (phasors of phase a) | the same, per phase |
+| `power` | instantaneous p = Σ v·i and q = ((v_b − v_c) i_a + (v_c − v_a) i_b + (v_a − v_b) i_c)/√3, in the direction of the currents | each row |
+| `step_response` | `rise_time_s` (10 to 90 % of the change), `delay_time_s` (50 %), `settling_time_s` (within `band` × the change, or the absolute `tolerance`, of the final value until the end), `overshoot` (beyond the final value, over the change; the peak refined by a parabola), `peak_time_s`, `steady_state_error` (against `target`) | from `step_time_s`; `initial` is the row at the step, `final` the last row, unless given |
+| `settling_time` | the time after `start_time_s` from which a signal stays within `tolerance` of `target` (`math.inf` if the last row is outside; `ValueError` if `target` is not finite or `tolerance` not finite and at least 0) | from `start_time_s` to the end |
+| `overvoltage` | the largest value and the time above `threshold` (total, longest interval, first crossing) | `start_time_s` to `end_time_s` (default all rows) |
+| `envelope` | whether a magnitude leaves a voltage-time curve given as points (time after `start_time_s`, level), `side="lower"` (stay at or above) or `"upper"`, `interpolation="step"` or `"linear"`; the largest excess and when | from `start_time_s` (the last level holds to the end) |
+| `harmonics` | the rms amplitude of each order (default 1 to 50, below half the rows per period) and the THD over orders 2 and up | `cycles` whole periods ending at `end_time_s` |
+| `difference` | max_abs, mean (signed), mean_abs and rms of x − y, over all rows and per window; y on another time axis (`t_y`, a measurement) is interpolated onto `t` | all rows and each window (both ends included) |
+
+- A window of the DFT must be a whole number of rows (a period of 20 ms at 50 µs is 400
+  rows); otherwise `ValueError` says to choose another time step. During a transient the
+  phasor of a window is its average, not an instantaneous value: a phasor of the window
+  ending at t sees what happened in the period before t.
+- Crossings of levels, bands and thresholds are interpolated linearly between rows. A level
+  of `step_response` that is never reached gives `math.inf` (the rise time too, when not
+  even 10 % is reached); an `initial` or `final` that is not finite is a `ValueError`.
+- **Checks** (`python/tests/test_metrics.py`): a first-order lag rises in τ·ln 9 and settles
+  (±2 %) in τ·ln 50 within one step; the overshoot of second-order systems (ζ = 0.3 and 0.7)
+  is exp(−ζπ/√(1 − ζ²)) within 1e-3; the 5th, 7th and 11th harmonics and the THD of a known
+  sum, and the symmetrical components of a given unbalance, come out within 1e-9; the time
+  of a trapezoidal overvoltage above its threshold within one step. Every metric runs on the
+  result of `examples/converter_voltage_support.json`.
+
+### Requirement files
+
+A requirement file (`"format": "openkeito-requirements"`, `"version": "0.1"`) makes a set of
+cases from a device, short-circuit ratios and disturbances, runs them as one batch and
+judges them by criteria whose limits name their source:
+
+```python
+from openkeito.requirements import load_requirements, run_suite
+suite = run_suite("examples/grid_test/requirements.json", jobs=8, out="suite")
+suite.counts            # {"cases": 18, "passed": 17, "failed": 1}
+suite.cases[-1]["failures"]   # criterion, metric, quantity, value, min, max, reason, source
+```
+
+```json
+{"format": "openkeito-requirements", "version": "0.1", "name": "...",
+ "device": {"model": "converter_device.json", "bus": "poi"},
+ "grid": {"rated_power_mva": 2.0, "rated_voltage_kv": 6.6, "frequency_hz": 50.0, "x_over_r": 10.0},
+ "simulation": {"end_time_s": 1.0},
+ "scr": [10, 5, 3, 2, 1.5, 1.2],
+ "disturbances": [
+   {"name": "fault", "type": "fault", "time_s": 0.2, "duration_s": 0.15, "residual_voltage_pu": 0.2},
+   {"name": "jump", "type": "phase_jump", "time_s": 0.2, "angle_deg": 30.0}],
+ "fail_on_warnings": ["W290"],
+ "criteria": [
+   {"name": "p_recovery", "metric": "settling_time", "signal": "PV1.p", "tolerance": 0.05, "max": 0.5,
+    "source": {"kind": "document", "document": "<title>", "edition": "<edition>", "clause": "<clause>"}},
+   {"name": "stable", "metric": "swing", "signal": "PV1.p", "last_s": 0.1, "max": 0.01,
+    "source": {"kind": "user", "note": "<why this value>"}}]}
+```
+
+- **Device and grid.** `device.model` is a path relative to the file (or the model itself),
+  `device.bus` its point of connection; `grid` holds the fields of `GridEquivalent` but the
+  short-circuit ratio, which comes from `scr`. `simulation` may replace `time_step_s` and
+  `end_time_s` of the device.
+- **Cases.** Every short-circuit ratio with every disturbance is a case, named
+  `scr<ratio>.<disturbance>` (`scr1.5.jump`) and run in that order. A disturbance has a
+  `name` (letters, digits, `_`, `-`), a `type` (`voltage_step` with `change_pu`,
+  `phase_jump` with `angle_deg`, `frequency_step` with `change_hz`, `frequency_ramp` with
+  `rate_hz_per_s`, each with an optional `duration_s`; `fault` with `duration_s` and
+  optionally `phases`, `ground`, `resistance_ohm` or `residual_voltage_pu`) and `time_s`, at
+  least one period after the start, and two periods when a criterion on a `bus` that uses
+  `pre` applies to it (`settling_time` to `"pre"`, `rise_time` and `overshoot`: the voltage
+  of a bus has values from the end of the first period, and `pre` is its mean over the
+  period before the disturbance; the other metrics need its values only after the
+  disturbance: from `from` on, over the last `last_s` of the run for `swing`). The
+  device's power is found once (as `attach` does) and given to every case.
+- **Criteria.** A `metric` on one quantity: `signal` (a control signal, added to the
+  outputs), `column` (a column of result.csv) or `bus` (the positive-sequence voltage of a
+  bus by the one-period DFT, per unit of the rated voltage of the grid; not for `thd`, which
+  needs a waveform such as the column `V(<bus>.a)`); `min`, `max` or
+  both; `disturbances` (names) limits it to some cases. The metrics and their windows
+  (`from`: `start` or `end` of the disturbance; `pre`: the mean over the period before it):
+
+  | Metric | Fields | Value |
+  |---|---|---|
+  | `settling_time` | `tolerance`; `target` (`"pre"`, default, or a number), `from` (default `end`) | s until the quantity stays within the tolerance of the target to the end; `inf` (null in JSON) if it never does |
+  | `rise_time`, `overshoot` | — | of `step_response` from the start, from `pre` to the mean of the last period |
+  | `maximum`, `minimum` | `from` (default `start`), `delay_s` | the largest (smallest) value from then to the end |
+  | `overvoltage_duration` | `threshold`; `from`, `delay_s` | s above the threshold |
+  | `envelope` | `points` ([s after `from`, level]); `side` (`lower`, `upper`), `interpolation` (`step`, `linear`), `from` (default `start`) | the largest excess outside the curve, 0 inside (so `"max": 0`) |
+  | `thd` | `cycles` (default 10), `at` (`end`, or `pre`: ending at the start) | THD of orders 2 to 50 |
+  | `swing` | `last_s` (default 0.1) | max − min over the end of the run: a loop that does not settle |
+
+- **Sources.** Every criterion has a `source`: `{"kind": "document", "document", "edition",
+  "clause"}` (all three non-empty) for a limit taken from a published requirement, or
+  `{"kind": "user", "note"}` for a value of one's own. The source covers every number of the
+  criterion (limits, tolerance, threshold, points). **OpenKeito ships no thresholds of grid
+  codes**: the limits of `examples/grid_test/requirements.json` are example values
+  (`kind: user`), not those of any code; write the values and clauses of the requirement
+  that applies.
+- **Judgement.** A case fails when its run does not complete (`status` other than
+  `completed`), when it reports a warning listed in `fail_on_warnings` (W290: the time step
+  is too long for the current control of a converter), or when a criterion is outside its
+  limits or cannot be evaluated. `suite.rows` (and `suite.csv`) has one row per case and
+  criterion, and one per failed run or failing warning: `case, scr, disturbance, criterion,
+  metric, quantity, value, min, max, result, reason, source`; `suite.cases` (and
+  `suite.json`) lists each case with its warnings, values and failures. With `out`, the
+  runs are in `out/cases/<case>` as those of a batch. The table does not depend on the number
+  of jobs, byte for byte, and has no times or paths in it.
+- **Validation.** `load_requirements` raises `RequirementsError` and
+  `validate_requirements(doc, base)` returns the diagnostics, each with a hint: E510 format
+  or version, E511 a field of the file, device, grid, simulation or `scr`, E512 a
+  disturbance (its `time_s` included), E513 an unknown metric, E514 a criterion (quantity,
+  `thd` of a `bus`, limits, fields of its metric, disturbances it names), E515 a criterion
+  without a source (or with an empty document, edition, clause or note), E516
+  `fail_on_warnings`, E517 a device model that cannot be read, has no such bus, or lacks the
+  bus of a criterion or the bus or component of a column `V(<bus>.<phase>)` or
+  `I(<component>...)` (`grid_src`, `grid`, `grid_z` and `grid_fault` are those that `attach`
+  adds; names may hold `.`: `I(inv.PV1.a)` is a current of the component `inv.PV1`, and
+  `V(site.poi.a)` phase a of the bus `site.poi`; a column `V(<node>)` of a node of the
+  device, such as `V(n1.x.b)`, is not read as a bus). Unknown fields are errors. A criterion
+  that cannot be evaluated (no finite values in its window) fails its case with the reason;
+  the other cases are judged.
+- **Known limitation.** The voltage of a `bus` (the one-period DFT) and `thd` need a whole
+  number of rows per period. With a `time_step_s` that does not divide the period (3e-5 s
+  at 50 Hz, for example), every criterion on a bus and every `thd` fails in every case as
+  "cannot be evaluated", with the reason (`1 period(s) of 50.0 Hz (0.02 s) is not a whole
+  number of rows of 3e-05 s; choose time_step_s (times output_interval_steps) that divides
+  it`). The validation does not find this; choose a time step that divides the period.
+- **Checks** (`python/tests/test_requirements.py`): the 18 cases of the example run from
+  one file and their tables with 8 and 1 jobs are the same bytes; 17 pass, and at SCR 1.2
+  the step of −10 % fails `p_recovery` (the converter cannot deliver 0.8 per unit and stays at
+  0.63). With the phase-locked loop at 80 Hz (default 20 Hz) the three cases at SCR 1.2
+  fail `stable` (swing 0.23 to 1.5 per unit); with a time step of 400 µs every case fails
+  with W290; a signal that does not exist fails the runs; a criterion without a source is
+  E515; a voltage step at 0.02 s with `settling_time` (to `pre`), `rise_time` and
+  `overshoot` on the bus `poi` is E512, and judged without the validation these fail as
+  "cannot be evaluated" while the run completes; at 0.02 s `maximum`, `minimum`,
+  `envelope`, `overvoltage_duration`, `swing` and `settling_time` to a number judge the bus
+  (the minimum is 0.900 per unit); `thd` of a bus is E514, and a bus or column the
+  device does not have E517 (the columns `I(inv.PV1.a)` and `V(site.poi.a)` of the converter
+  `inv.PV1` at the bus `site.poi` are not, `I(inv.a)` and `V(site.a)` are, and `V(n1.x.b)`
+  of a node `n1.x.b` is not). The 18 cases
+  take 0.3 s on 8 cores.
 
 ## Diagram layout sidecars
 

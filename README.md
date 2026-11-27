@@ -138,6 +138,7 @@ time step, and a 10 kHz buck converter at 10 µs is more accurate than at 1 µs 
 | `buck.json`, `buck_pi.json`, `buck_interpolated.json` | a 10 kHz buck converter: open loop, with PI voltage control, and with switching instants within the step |
 | `rectifier.json` | diode bridge with capacitor input |
 | `thyristor_rectifier.json` | six-pulse thyristor rectifier fired at 30 deg (`thyristor`, format `0.9`), with commutation overlap |
+| `grid_test/requirements.json` (with `grid_test/converter_device.json`) | a requirement file: the converter behind grids of short-circuit ratio 10 to 1.2 with a fault, a phase jump and a voltage step, 18 cases judged by criteria (`openkeito.requirements`; example limits, not those of a grid code) |
 | `arrester.json`, `saturable_reactor.json`, `transformer_inrush.json` | nonlinear elements: a surge arrester, a saturable reactor with a diode, the inrush current of a transformer |
 | `control_blocks.json`, `current_control.json`, `pll.json` | control blocks: a set point shaped by blocks, PI control of a current, a phase-locked loop |
 | `expression_control.json` | mathematical expressions (`expression` control block, format `0.8`) driving a controlled current source |
@@ -185,7 +186,12 @@ PowSyBl (CIM / CGMES, with short-circuit data and phase-angle clocks), with gene
 or synchronous machines and inverters as current injections or converters; runs a schedule
 as time slices with disturbances in parallel; and follows a schedule from one time to the
 next, or through several times in one run, with excitation systems, governors and
-stabilizers on the machines. `openkeito.layout` generates `openkeito-layout` `"0.1"`
+stabilizers on the machines. `openkeito.gridtest` puts a device behind a grid equivalent of a
+given short-circuit ratio and X/R and disturbs it (voltage steps, phase jumps, frequency steps
+and ramps, faults); `openkeito.metrics` gives response metrics (symmetrical components, rise
+and settling times, overshoot, temporary overvoltages, voltage-time envelopes, harmonics, the
+difference of waveforms); and `openkeito.requirements` runs a requirement file of such tests
+as one batch and judges each case by criteria whose limits cite their source. `openkeito.layout` generates `openkeito-layout` `"0.1"`
 diagram sidecar JSON from bus coordinates or pandapower geodata without changing the model
 format. Install the converters with
 `python -m pip install ".[pandapower,powsybl]"`. See [docs/python.md](docs/python.md).
@@ -206,7 +212,7 @@ the tool.
 | Document | Content |
 |---|---|
 | [docs/model.md](docs/model.md) | the model format: conventions, settings, components, results, batch files, diagnostics |
-| [docs/python.md](docs/python.md) | the Python package: running models, conversion from pandapower and PowSyBl, schedules, time slices, transitions |
+| [docs/python.md](docs/python.md) | the Python package: running models, conversion from pandapower and PowSyBl, schedules, time slices, transitions, grid-connection tests and requirement files |
 | [docs/mcp.md](docs/mcp.md) | the MCP server: tools and the root folder |
 | [docs/numerical-method.md](docs/numerical-method.md) | the methods, with their references and how each is verified |
 | [docs/performance.md](docs/performance.md) | measured run times |
@@ -223,7 +229,7 @@ The repository:
 | `crates/openkeito-cli` | the command `openkeito` and the library behind it (run, scan, batch). Its feature `native` (on by default) holds the command and `batch`; the browser builds the library without it |
 | `crates/openkeito-py` | the native module of the Python package (`openkeito._native`) |
 | `crates/openkeito-wasm` | the WebAssembly module |
-| `python/openkeito` | the Python package: run API, converters, schedules, transitions, MCP server |
+| `python/openkeito` | the Python package: run API, converters, schedules, transitions, grid-connection tests, metrics, requirement files, MCP server |
 | `web/` | the browser page |
 | `examples/` | example models |
 | `paper/` | figures and tables for a paper |
@@ -269,7 +275,7 @@ Done: the circuit solver with two integration methods; power-electronics switchi
 three-phase networks with steady-state initialization and frequency scans; the Python
 package with conversion from pandapower and PowSyBl, schedules and the MCP server; control
 blocks, machines, nonlinear elements, travelling-wave lines, converters, transitions and
-the parallel solution of divided networks; the WebAssembly module, the browser page, and
+the parallel solution of divided networks; grid-connection tests run from requirement files; the WebAssembly module, the browser page, and
 the circuit and control diagrams linked with diagnostics and results.
 
 Not decided, and open for discussion in the issues:

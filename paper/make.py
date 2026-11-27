@@ -48,6 +48,7 @@ ITEMS = [
     "expression_control",
     "ai_control",
     "wecc_ibr",
+    "grid_tests",
     "power_flow_start",
     "schedule_runs",
     "ieee39_diagram",

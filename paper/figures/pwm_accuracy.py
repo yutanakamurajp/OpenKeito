@@ -16,9 +16,10 @@ integrated the same way between their samples), and the amplitude and
 phase of the fundamental (a DFT over the period).
 
 - "grid": a switching instant moves to a grid point: first order.
-- "interpolated": the step is split at the instant: second order, until a
-  pulse is narrower than a step ((1 - M) Tc/2 = 22.4 us here), which the
-  preview at the end of the part does not see.
+- "interpolated": the step is split at the instant: second order, also at
+  25 us, where the narrowest pulse ((1 - M) Tc/2 = 22.4 us here) begins and
+  ends within a step and is found at the vertex of the carrier (to 0.14.0
+  only the end of the part was previewed and such pulses were lost).
 """
 
 from __future__ import annotations

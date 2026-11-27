@@ -19,8 +19,8 @@
 //! fundamental (a DFT over that period), and the THD up to the 40th
 //! harmonic.
 //!
-//! The ordinary test runs one case at 10 and 20 µs against 1 µs, and
-//! counts the pulses that 25 µs misses. The table
+//! The ordinary test runs one case at 10, 20 and 25 µs against 1 µs (at
+//! 25 µs the narrowest pulses begin and end within a step). The table
 //! of the documents comes from the ignored test:
 //! `cargo test --release -p openkeito-core --test pwm_inverter -- --ignored --nocapture`.
 
@@ -312,13 +312,21 @@ fn a_pwm_inverter_at_large_steps_keeps_the_fundamental_of_fine_steps() {
         last = Some(e);
     }
     // At 25 µs the narrowest pulses (22.4 µs) begin and end within one
-    // step and are not seen (see the documents): measured 1135 events of
-    // 1149.
+    // step. They are found at the vertices of the carrier (see the
+    // documents): every pulse is seen, as at 10 and 20 µs (before, 1135
+    // events of 1149), and the error is that of the step.
     let h = 2.5e-5;
     let coarse = solve(case, h, "interpolated", end).run.unwrap();
+    let e = errors(&coarse, h, &reference, (0.005, 0.025));
     let (n, n_ref) = (coarse.stats.events.len(), reference.stats.events.len());
-    println!("h 25 us: {n} events (reference {n_ref})");
-    assert!(n + 10 <= n_ref, "{n} vs {n_ref}");
+    println!("h 25 us: {e:?}, {n} events (reference {n_ref})");
+    // Measured: amplitude 1.1e-4, phase 1.8e-3 deg, carrier average
+    // 0.0158 A (1.36 times that at 20 us; (25/20)^2 = 1.56).
+    assert!(n + 2 >= n_ref, "{n} vs {n_ref}");
+    assert!(e.amplitude < 3e-4, "{e:?}");
+    assert!(e.phase_deg < 5e-3, "{e:?}");
+    assert!(e.average < 0.05, "{e:?}");
+    assert_eq!(coarse.stats.instant_limit_steps, 0);
 }
 
 #[test]

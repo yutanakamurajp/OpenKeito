@@ -62,6 +62,8 @@ pub(in crate::sim) struct Work {
     actions: Vec<(String, SwitchAction)>,
     /// The control signals previewed at a time within a step.
     preview: Vec<f64>,
+    /// The vertices of the carriers within a part (`Controls::vertices`).
+    vertices: Vec<f64>,
     /// The currents of the links at their ports for the stage being solved,
     /// and the voltages at their ports in its solution.
     port_b: Vec<f64>,
@@ -1569,6 +1571,7 @@ impl Simulator {
             out_values: Vec::with_capacity(OUTPUT_BATCH * self.probes.len()),
             actions: Vec::new(),
             preview: vec![0.0; self.controls.values.len()],
+            vertices: Vec::new(),
             port_b: vec![0.0; self.layout.port_count],
             port_x: vec![0.0; self.layout.port_count],
             x_first: vec![0.0; if !self.layout.is_whole() { n } else { 0 }],

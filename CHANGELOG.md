@@ -3,6 +3,26 @@
 OpenKeito の変更履歴。Conventional Commits 1.0.0 のコミットをもとに書き、バージョンは SemVer 2.0.0 に従う。
 バージョンの正は `Cargo.toml` の `[workspace.package]` の `version`。手順は `AGENTS.md` の「Versions and releases」を参照。
 
+## 0.15.0 (2026-11-27)
+
+M11 段 2（#53〜#55 系統連系の試験）: SCR・X/R からの系統の等価と外乱、応答の指標、要件ファイルから試験一式を batch で回して出典付きのしきい値で合否を出す道具を Python パッケージに足した。あわせて `interpolated` で刻みより狭いパルスが落ちる件（#48 の 25 µs）を直した。モデル形式（`0.9`）は変えておらず、v0.14.0 の例 24 件の実行結果 CSV（57 ファイル）は 0.14.0 とバイト単位で同じ（例に刻みの中で始まって終わるパルスは無い）。
+
+### Features
+
+* **py:** `openkeito.gridtest` を追加: `GridEquivalent`（定格・SCR・X/R から |Z| = V²/(SCR·S)、R = |Z|/√(1 + (X/R)²) の `coupled_rl` と電源）、`attach`（被試験の設備を連系点につなぎ、その運転点から電源の内部電圧 E = V − Z·I を決めて定常から始める）、外乱 `VoltageStep`・`PhaseJump`・`FrequencyStep`・`FrequencyRamp`（`three_phase_controlled_source` を形式 0.5 の制御ブロックで 1 刻み先に書く。形式 0.5 より古い設備は `ValueError` で断り、版は変えない。外乱が故障だけなら 0.3 で足りる）と連系点の `Fault`（抵抗、または残る電圧から決める）。インピーダンスは手計算と 1e-12、開放端の位相跳躍 ±20°・±40° は DFT で 1e-12°、1 Hz/s のランプと 0.5 Hz のステップの周波数は 1.2e-10 Hz、変換器をつないだ定常は SCR 10・3・1.2 で 2.4e-5 pu 以内（#53、[python/tests/test_gridtest.py](python/tests/test_gridtest.py)）
+* **py:** `openkeito.metrics` を追加: 整数周期の DFT による phasor と対称分（各行の窓も）、三相の瞬時 P・Q、ステップ応答（立ち上がり・遅れ・整定・行き過ぎ・定常偏差）、TOV の最大値と継続時間、電圧-時間の包絡からの外れ、THD と各次、2 つの波形の差（窓ごと）。10 % にも届かない立ち上がりは inf、有限でない目標・許容・初期値は `ValueError`。1 次遅れの立ち上がり τ·ln 9・整定 τ·ln 50 が 1 刻み以内、2 次系の行き過ぎ 1e-3、高調波・THD・対称分 1e-9（#54、[python/tests/test_metrics.py](python/tests/test_metrics.py)）
+* **py:** `openkeito.requirements` と要件ファイル（`"format": "openkeito-requirements"`、`"version": "0.1"`）を追加: SCR の値 × 外乱のケースを作って `run_batch` で回し、指標と上下限と出典（`kind: document` の文書名・版・条文、または `kind: user` の注記）でケースごとに合否を出し、外れた指標・値・しきい値・出典を `suite.csv`・`suite.json` に書く。run が完了しないケースと `fail_on_warnings` の警告（例: W290）のケースも不合格。出典の無いしきい値は検証でエラー（E515）。母線の正相電圧（1 周期の DFT）を外乱前 1 周期の平均 `pre` で判定する指標（`pre` を目標にする `settling_time`、`rise_time`、`overshoot`）が掛かる外乱は 2 周期目より後に始める（E512。ほかの指標は 1 周期目の後から判定できる）、母線の `thd` は E514、設備に無い母線・列は E517（名前の「.」は設備の名前で分ける: `I(inv.PV1.a)` は部品 `inv.PV1` の電流。設備の節点の列 `V(n1.x.b)` は母線と読まない）。値を出せない判定（窓に有限の値が無い）はそのケースだけを理由付きで不合格にする。既知の制約: 1 周期が刻みで割り切れない `time_step_s`（50 Hz で 3e-5 s など）では母線の判定と `thd` がどのケースも理由付きの「cannot be evaluated」になり、検証では見つからない。診断 E510〜E517 を追加。OpenKeito はグリッドコードのしきい値を同梱しない（#55、[python/tests/test_requirements.py](python/tests/test_requirements.py)）
+* **examples:** `examples/grid_test/requirements.json`（と設備 `converter_device.json`）: SCR {10, 5, 3, 2, 1.5, 1.2} × {三相故障 150 ms、位相跳躍 +30°、電圧ステップ −10 %} の 18 ケース。表は `jobs` 8 と 1 でバイト単位で同じ。17 ケースが合格し、SCR 1.2 の電圧ステップは有効電力が 0.63 pu に止まって不合格。しきい値はすべて例の値（`kind: user`）
+
+### Bug Fixes
+
+* **core:** `interpolated` で、区間の終わりの preview に切り替えが見えないときは区間の中の `triangle_wave` の頂点（最小・最大）でも preview を見て、切り替えがあれば区間の始めから頂点までの二分探索で時刻を置くようにした。刻みの中で始まって終わるパルスは搬送波の頂点で最も広いので、そこで見つかる。三相 PWM インバータ（変調率 0.89、最も狭いパルス 22.4 µs）の 25 µs は、25 ms で 1149 イベントのうち 1135 → 1147（10・20 µs と同じ）、60 ms では 2705 → 2739、搬送波 1 周期平均の最大差は 5.5 A → 1.3e-2 A（デッドタイム 2 µs で 6.0 A → 1.6e-2 A）、基本波の振幅 1.0e-2 → 6.2e-5、位相 2.7° → 9.4e-4°。20 → 25 µs の誤差の比は 1.35・1.52（2 次なら 1.56）。PI 電流制御でリプルが作る狭いパルスも見つかり、20 µs の平均の差は 3.3 A → 1.2 A、振幅 1.2 % → 0.83 %、位相 0.51° → 0.39°、イベント 2553 → 2673（基準 2679）。変調率固定の 0.5〜20 µs と `grid` の結果は変わらない。終わりで切り替えが見える区間は今までどおりで、区間の中で 3 回切り替わるもの、`triangle_wave` 以外の搬送波のパルスは対象外（[docs/numerical-method.md](docs/numerical-method.md#switching-instants-within-a-step)、[crates/openkeito-core/tests/pwm_inverter.rs](crates/openkeito-core/tests/pwm_inverter.rs)）
+
+### Documentation & Paper
+
+* **paper:** `paper/figures/grid_tests.py`（18 ケースの有効電力の応答と判定の表、PLL 80 Hz の不安定な変換器）を `paper/make.py` と [python/tests/test_paper_figures.py](python/tests/test_paper_figures.py) に追加
+* **docs:** `docs/python.md`（Grid-connection tests、Response metrics、Requirement files）、`docs/model.md`（診断 E510〜E517 の行）、`README.md`・`AGENTS.md`・`paper/README.md`・`plan.md`（M11 段 2 の結果、段 1 の残り 3 つの決定）を更新。`docs/numerical-method.md`（刻みの中の頂点の preview、PWM インバータの 25 µs と PI 電流制御の数字）、`docs/performance.md`（頂点を見ても計算時間は変わらない）、`docs/model.md`（`thyristor` のゲートのパルス）、`paper/README.md`・`paper/figures/pwm_accuracy.py`（25 µs の数字）を直した
+
 ## 0.14.0 (2026-11-27)
 
 M11 段 1（#49 サイリスタ、#48 三相 PWM インバータの大きい刻みの精度の記録、#51 の着手前の計測）: ゲートで点弧し電流零点で消弧する部品 `thyristor` とモデル形式 `0.9` を足し、三相 2 レベル PWM インバータの刻みごとの誤差と、インバータ 8 台の系統の 1 刻みの時間を記録した。`0.1`〜`0.8` の既存モデルはそのまま読め、v0.13.0 の例 23 件の実行結果 CSV（55 ファイル）は 0.13.0 とバイト単位で同じ。
